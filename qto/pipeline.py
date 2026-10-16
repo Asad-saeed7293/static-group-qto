@@ -16,6 +16,7 @@ from collections import Counter
 from . import store
 from .boq.generate import generate_boq
 from .build import build_all
+from .calc.validation import validate_calculations
 from .scan import list_files, scan_drawing
 from .knowledge.model import load_model
 from .knowledge.rules_engine import load_rules as load_method_rules, settings_for
@@ -160,6 +161,7 @@ def _compute(pid, run_id, drawings, facts, rules, settings, ov, P=None):
     res = build_all(dd, rules, settings, ov, logs.append)
     stage(4, "done", "; ".join(logs[:3]))
     stage(5, "running")
+    validation_issues = validate_calculations(res["elements"], res["quantities"])
     elements = [e.to_dict() for e in res["elements"]]
     quantities = [q.to_dict() for q in res["quantities"]]
     # engine variants for rules that change element measurement (heights, depths): used for candidates/impact
@@ -178,6 +180,15 @@ def _compute(pid, run_id, drawings, facts, rules, settings, ov, P=None):
                                            "quantities": [{k: q.to_dict()[k] for k in ("element_uid", "quantity_type", "value")} for q in vr["quantities"]]}
     items = compute_items({"elements": elements, "quantities": quantities}, variants, dd, res["design"], mrules,
                           store.project_inputs(pid), load_model())
+    rules_by_element = {}
+    for item in items:
+        for uid in item.get("element_uids", []):
+            linked = rules_by_element.setdefault(uid, [])
+            for rule in item.get("rules", []):
+                if not any(existing.get("rule_id") == rule.get("rule_id") for existing in linked):
+                    linked.append(rule)
+    for quantity in quantities:
+        quantity["methodology_rules"] = rules_by_element.get(quantity["element_uid"], [])
     stage(5, "done", f"{len(quantities)} quantity records, {sum(1 for q in quantities if q['value'] is None)} not calculable; "
                      f"{len(items)} BOQ item calculations ({sum(1 for i in items if i['value'] is not None)} with a value)")
     stage(6, "running")
@@ -185,9 +196,10 @@ def _compute(pid, run_id, drawings, facts, rules, settings, ov, P=None):
     stage(6, "done", f"{len(boq)} BOQ lines")
     stage(7, "running")
     flags = Counter(f["code"] for e in elements for f in e["flags"])
-    stage(7, "done", f"{sum(flags.values())} element flags")
+    stage(7, "done", f"{sum(flags.values())} element flags; {len(validation_issues)} calculation validation issues")
     out = {"run_id": run_id, "elements": elements, "quantities": quantities, "boq": boq, "design": res["design"],
-           "items": items, "rule_snapshot": {k: {"status": v["status"], "selected": v.get("selected"), "version": v.get("version")} for k, v in mrules.items()},
+           "items": items, "validation_issues": validation_issues,
+           "rule_snapshot": {k: {"status": v["status"], "selected": v.get("selected"), "version": v.get("version")} for k, v in mrules.items()},
            "warnings": res["warnings"], "orphans": res["orphans"], "build_log": logs,
            "assumptions": assumptions_list(res["design"], settings, rules), "settings_used": settings, "overrides_used": ov}
     store.write_json(store.run_path(pid, run_id, "results.json"), out)
@@ -221,6 +233,7 @@ def _run_meta(pid, run_id, kind, started, proj, drawings, other, result, warning
             "quantity_records": len(vol), "quantified": sum(1 for q in vol if q["value"] is not None),
             "not_quantified": sum(1 for q in vol if q["value"] is None),
             "boq_lines": len(result["boq"]),
+            "validation_issues": len(result.get("validation_issues", [])),
             "total_concrete_m3": round(sum(q["value"] for q in vol if q["value"] and q["quantity_type"] == "concrete_volume"), 3),
             "total_blinding_m3": round(sum(q["value"] for q in vol if q["value"] and q["quantity_type"] == "blinding_volume"), 3),
         },

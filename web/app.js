@@ -658,6 +658,7 @@ function showMapper(pv) {
 }
 async function variance(main) {
   const c = await cached("cmp", () => api(P("/comparison")));
+  const mappingData = c.boq ? await cached("boq-mappings", () => api(P("/boq/mappings"))) : { targets: [] };
   const s = await api(P("/settings"));
   const tol = s.settings.tolerances.map(b => `≤ ${b.max_abs_pct}% → ${b.status}`).join(" · ") + ` · above → ${s.settings.tolerance_above_status}`;
   const banner = !c.boq ? `<div class="banner info">${icon("info")}<div>No client BOQ imported — showing drawing quantities only. Import one on the <a href="#/project/clientboq">Client BOQ</a> tab.</div></div>`
@@ -670,7 +671,82 @@ async function variance(main) {
     $("#vt").innerHTML = table([{ t: "BOQ item", f: r => esc(r.boq_item_no) || "<i class='small'>—</i>" }, { t: "BOQ description", f: r => esc(r.boq_description) || "<i class='small'>(no BOQ row)</i>" }, { k: "boq_element", t: "BOQ element" },
     { t: "Drawing item", f: r => `${esc(r.matched_items.join(", "))}<div class="small">${esc((r.drawing_description || "").slice(0, 70))}</div>` }, { t: "Drawing qty", num: 1, f: r => n3(r.drawing_quantity), sv: r => r.drawing_quantity ?? -1 }, { t: "BOQ qty", num: 1, f: r => n3(r.boq_quantity) + (r.boq_unit ? " " + esc(r.boq_unit) : ""), sv: r => r.boq_quantity ?? -1 },
     { t: "Variance", num: 1, f: r => n3(r.variance), sv: r => r.variance ?? 0 }, { t: "Var %", num: 1, f: r => pct(r.variance_pct), sv: r => Math.abs(r.variance_pct ?? 0) }, { t: "Status", f: r => badge(r.status), sv: r => r.status },
+    { t: "Mapping decision", f: r => {
+      if (r.boq_source_row == null) return "";
+      const suggestedKey = r.candidate_refs?.length === 1 ? r.candidate_refs[0].match_key : null;
+      const selectedTarget = r.mapping_target_type && r.mapping_target_key
+        ? `${r.mapping_target_type}|${r.mapping_target_key}` : suggestedKey ? `calculated|${suggestedKey}` : "";
+      const options = (mappingData.targets || []).map(t => {
+        const value = `${t.target_type}|${t.target_id}`;
+        const detail = t.target_type === "canonical" ? "canonical item; no measured quantity" : `calculated · ${t.evidence_status || "status unknown"}`;
+        const score = t.target_type === "calculated" ? r.candidate_scores?.find(c => c.item_no === t.item_no) : null;
+        return `<option value="${esc(value)}" ${selectedTarget === value ? "selected" : ""}>${esc(t.item_no)} — ${esc(t.description)} (${esc(t.unit)}; ${detail}${score ? `; description similarity ${Math.round(score.score * 100)}%` : ""})</option>`;
+      }).join("");
+      const state = r.mapping_status ? `${esc(r.mapping_status)}${r.mapping_version ? ` v${r.mapping_version}` : ""}` : "No saved decision";
+      const sourceIdentity = r.mapping_source_identity || {};
+      const history = (r.mapping_history || []).map(h => `<li>v${h.version}: ${esc(h.action)}${h.target_id ? ` → ${esc(h.target_id)}` : ""} · ${esc(h.reviewer || "reviewer unavailable")} · ${esc(fmtIso(h.timestamp))}${h.comment ? `<br>${esc(h.comment)}` : ""}</li>`).join("");
+      const sourceDetails = `${esc(r.boq_source_file || sourceIdentity.source_file || "")} · ${esc(r.boq_sheet || sourceIdentity.source_sheet || "")} row ${esc(r.boq_source_row)} · ${esc(r.boq_item_no)} · ${esc(r.boq_unit || "")} · qty ${n3(r.boq_quantity)}`;
+      const suggestions = (r.candidate_scores || []).map(c => `${c.item_no}: description similarity ${Math.round(c.score * 100)}%`).join("; ");
+      return `<div class="small">${state}${r.mapping_target_type ? ` · ${esc(r.mapping_target_type)}: ${esc(r.mapping_target_code || r.mapping_target_id || "")}` : ""}</div>
+        <details><summary>Source, suggestions &amp; history</summary><div class="small">${sourceDetails}<br>${esc(suggestions || "No suggested calculated target")}${sourceIdentity.source_fingerprint ? `<br>Source fingerprint: ${esc(sourceIdentity.source_fingerprint)}` : ""}</div>${history ? `<ol class="small">${history}</ol>` : '<div class="small">No prior mapping decisions.</div>'}</details>
+        <select data-map-target aria-label="Mapping target"><option value="">Select target…</option>${options}</select>
+        <select data-map-action aria-label="Mapping decision"><option value="approve">Approve selected target</option><option value="reject">Reject selected candidate</option><option value="unresolved">Leave unresolved</option></select>
+        <button type="button" class="sec small" data-map-apply>Preview decision</button>`;
+    } },
     { t: "Reason", f: r => `<span class="small">${esc(r.reasons.join("; "))}</span>` }], rows, { onclick: r => r.element_uids.length ? openEvidence(r.element_uids[0]) : toast("This BOQ row has no matching drawing element") });
+    setTimeout(() => {
+      const tableEl = $("#vt table");
+      if (!tableEl) return;
+      tableEl.querySelectorAll("[data-map-target], [data-map-action], [data-map-apply], details, summary").forEach(el => {
+        el.addEventListener("click", e => e.stopPropagation());
+        el.addEventListener("keydown", e => e.stopPropagation());
+      });
+      tableEl.querySelectorAll("[data-map-apply]").forEach(button => button.onclick = async e => {
+        e.stopPropagation();
+        const tr = button.closest("tr");
+        const row = rows[+tr.dataset.ri];
+        const action = tr.querySelector("[data-map-action]").value;
+        const selected = tr.querySelector("[data-map-target]").value || "";
+        const [targetType, targetId] = selected ? selected.split("|", 2) : [null, null];
+        if (action !== "unresolved" && !targetId) return toast("Select a target or candidate first", 5000, "error");
+        const expectedVersion = row.mapping_version || 0;
+        const originalLabel = button.textContent;
+        button.disabled = true;
+        button.textContent = "Preparing preview…";
+        try {
+          const preview = await api(P("/boq/mappings/preview"), { method: "POST", body: {
+            source_row: row.boq_source_row, action, target_id: action === "unresolved" ? null : targetId,
+            target_type: action === "unresolved" ? null : targetType,
+            expected_version: expectedVersion
+          } });
+          const before = preview.before;
+          const after = preview.after;
+          const quantityNote = preview.after.target_type === "canonical" ? "<br>Canonical target is a classification only; no calculated quantity is being approved." : "";
+          const message = `BOQ row ${preview.source_row}: <b>${esc(preview.source_description)}</b><br>
+            Current: ${esc(before.decision)} · drawing qty ${n3(before.drawing_quantity)} · variance ${n3(before.variance)}<br>
+            Proposed: ${esc(after.decision)}${after.target_description ? ` → ${esc(after.target_description)}` : ""}
+            · drawing qty ${n3(after.drawing_quantity)} · variance ${n3(after.variance)}${quantityNote}<br>
+            Run ${esc(preview.run_id || "not available")} · import ${esc(preview.import_id)}. Historical runs are unchanged. Preview expires in ${preview.expires_in_seconds}s.
+            <label for="boqMapComment">Estimator comment (optional)</label><textarea id="boqMapComment" rows="3" aria-label="Estimator comment"></textarea>`;
+          if (!(await confirmDialog("Preview BOQ mapping decision", message, "Apply decision", action === "reject"))) {
+            button.disabled = false;
+            button.textContent = originalLabel;
+            return;
+          }
+          const comment = $("#boqMapComment")?.value.trim() || "";
+          button.textContent = "Applying decision…";
+          await api(P("/boq/mappings"), { method: "POST", body: {
+            source_row: row.boq_source_row, action, target_id: action === "unresolved" ? null : targetId,
+            target_type: action === "unresolved" ? null : targetType,
+            expected_version: expectedVersion, preview_token: preview.preview_token, comment
+          } });
+          invalidate(); toast("BOQ mapping decision saved"); await variance(main);
+        } catch (err) {
+          toast(err.message, 6000, "error"); button.disabled = false; button.textContent = originalLabel;
+          if (/stale|version changed|expired/i.test(err.message)) { invalidate(); await variance(main); }
+        }
+      });
+    }, 0);
   };
   $("#vs").onchange = draw; draw();
 }

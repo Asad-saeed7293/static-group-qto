@@ -149,6 +149,9 @@ class QuantityRecord:
     formula: str                 # symbolic, e.g. "L x W x D"
     substitution: str            # numeric, e.g. "2.600 x 2.200 x 0.450"
     inputs: dict                 # name -> Measurement dict
+    evidence: list = field(default_factory=list)  # source measurements and entity references used by the calculation
+    missing_inputs: list = field(default_factory=list)
+    methodology_rules: list = field(default_factory=list)
     assumptions: list = field(default_factory=list)
     status: str = ST_OK
     confidence: float = 1.0

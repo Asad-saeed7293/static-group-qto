@@ -93,6 +93,9 @@ def generate_boq(elements: list, quantities: list) -> list:
                 "layers": sorted({e["layer"] for e, _ in items}),
                 "element_uids": [e["uid"] for e, _ in items],
                 "qids": [q["qid"] for _, q in items],
+                "calculation_evidence": [{"qid": q["qid"], "formula": q["formula"], "substitution": q["substitution"],
+                                          "inputs": q.get("inputs", {}), "evidence": q.get("evidence", [])}
+                                         for _, q in items],
                 "formula": items[0][1]["formula"],
                 "match_key": f"{norm_mark(mark) if identified else e0['uid']}@{k[2]}",
                 "mark_norm": norm_mark(mark) if identified else "",

@@ -5,6 +5,7 @@ Run:  python -m uvicorn server.app:app --port 8000   (or run.bat)
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import shutil
@@ -366,11 +367,14 @@ def boq_import(pid: str, body: dict = Body(...)):
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     iid = time.strftime("%Y%m%d-%H%M%S")
+    with open(src, "rb") as source_fh:
+        source_fingerprint = hashlib.sha256(source_fh.read()).hexdigest()
     d = store.pdir(pid, "boq")
     os.makedirs(d, exist_ok=True)
     shutil.copy(src, os.path.join(d, f"{iid}{os.path.splitext(token)[1]}"))
     rec = {"import_id": iid, "name": body.get("name") or body.get("filename") or token, "source_file": body.get("filename"),
-           "imported": store.now(), "is_test": bool(body.get("is_test")), "mapping": mapping, "header_row": body.get("header_row"),
+           "source_fingerprint": source_fingerprint, "imported": store.now(), "is_test": bool(body.get("is_test")),
+           "mapping": mapping, "header_row": body.get("header_row"),
            "row_count": len(rows), "rows": rows, "warnings": warnings}
     store.write_json(os.path.join(d, f"{iid}.json"), rec)
     store.write_json(store.pdir(pid, "active_boq.json"), {"import_id": iid})
@@ -396,6 +400,85 @@ def boq_activate(pid: str, body: dict = Body(...)):
     store.audit(pid, "boq_activated", import_id=body.get("import_id"))
     service.invalidate()
     return {"ok": True}
+
+
+@app.get("/api/projects/{pid}/boq/mappings")
+def boq_mappings(pid: str):
+    from qto.boq.mappings import list_for_project
+    _need(pid)
+    data = list_for_project(pid)
+    rid = store.latest_run_id(pid)
+    result = store.read_json(store.run_path(pid, rid, "results.json")) if rid else {}
+    data["targets"] = [
+        {"target_type": "calculated", "target_id": l["match_key"], "item_no": l["item_no"],
+         "description": l["description"], "unit": l["unit"], "category": l["category"],
+         "quantity": l["quantity"], "evidence_status": l.get("status")}
+        for l in (result or {}).get("boq", [])]
+    data["targets"].extend(
+        {"target_type": "canonical", "target_id": f"canonical:{item['canonical_id']}",
+         "item_no": item["code"], "description": item["description"], "unit": item["unit"],
+         "category": item["category"], "status": item["status"], "quantity": None}
+        for item in data["canonical_items"] if item.get("status") == "active")
+    return data
+
+
+@app.get("/api/boq/canonical-items")
+def canonical_boq_items():
+    from qto.boq.mappings import canonical_library
+    return canonical_library()
+
+
+@app.post("/api/boq/canonical-items")
+def canonical_boq_item_save(body: dict = Body(...)):
+    from qto.boq.mappings import save_canonical_item
+    try:
+        return save_canonical_item(body, body.get("expected_version"))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(409, str(exc))
+
+
+def _mapping_integer(value, field):
+    if isinstance(value, bool):
+        raise ValueError(f"{field} must be an integer")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and re.fullmatch(r"\d+", value):
+        return int(value)
+    raise ValueError(f"{field} must be an integer")
+
+
+@app.post("/api/projects/{pid}/boq/mappings/preview")
+def boq_mapping_preview(pid: str, body: dict = Body(...)):
+    from qto.boq.mappings import preview
+    _need(pid)
+    try:
+        return preview(pid, _mapping_integer(body["source_row"], "source_row"), body.get("action"),
+                       body.get("target_id", body.get("target_key")),
+                       _mapping_integer(body.get("expected_version", 0), "expected_version"), body.get("target_type"))
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(400, str(exc))
+    except TypeError:
+        raise HTTPException(400, "source_row and expected_version must be integers")
+
+
+@app.post("/api/projects/{pid}/boq/mappings")
+def boq_mapping_decide(pid: str, body: dict = Body(...)):
+    from qto.boq.mappings import decide
+    _need(pid)
+    try:
+        out = decide(pid, _mapping_integer(body["source_row"], "source_row"), body.get("action"),
+                     body.get("target_id", body.get("target_key")),
+                     _mapping_integer(body.get("expected_version", 0), "expected_version"),
+                     body.get("preview_token"), body.get("comment", ""),
+                     body.get("target_type"))
+    except KeyError as exc:
+        raise HTTPException(400, f"Missing field: {exc}")
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    except TypeError:
+        raise HTTPException(400, "source_row and expected_version must be integers")
+    service.invalidate()
+    return out
 
 
 # --- review -------------------------------------------------------------------------

@@ -10,7 +10,7 @@ import io
 import os
 import re
 
-FIELDS = ["item_no", "description", "element", "floor", "quantity", "unit", "rate"]
+FIELDS = ["item_no", "description", "element", "floor", "quantity", "unit", "rate", "section"]
 REQUIRED = ["quantity"]
 SYNONYMS = {
     "item_no": ["item no", "item", "item #", "ref", "ref.", "no", "no.", "s/n", "sn", "sl", "sl no", "boq ref", "code"],
@@ -20,6 +20,7 @@ SYNONYMS = {
     "quantity": ["qty", "quantity", "boq qty", "boq quantity", "quant", "qty.", "amount qty"],
     "unit": ["unit", "uom", "units", "u.o.m", "unit of measure"],
     "rate": ["rate", "unit rate", "rate (qr)", "rate qr", "price", "unit price"],
+    "section": ["section", "section code", "section name", "trade", "category", "work section"],
 }
 
 
@@ -111,7 +112,8 @@ def import_rows(path: str, mapping: dict, header_row: int, sheet: str | None = N
     missing = [f for f in REQUIRED if f not in mapping or mapping[f] in (None, "")]
     if missing:
         raise ValueError(f"Mapping must include: {', '.join(missing)}")
-    rows = read_table(path, sheet)["rows"]
+    table = read_table(path, sheet)
+    rows = table["rows"]
     out, warnings = [], []
     for ri, r in enumerate(rows[header_row + 1:], start=header_row + 2):
         def get(field):
@@ -126,9 +128,15 @@ def import_rows(path: str, mapping: dict, header_row: int, sheet: str | None = N
         el = get("element")
         if q is None and not desc and not el:
             continue  # section heading / blank line
-        rec = {"row": ri, "item_no": str(get("item_no") or "").strip(), "description": str(desc or "").strip(),
+        raw_item_no, raw_desc, raw_unit, raw_quantity = get("item_no"), desc, get("unit"), get("quantity")
+        raw_section = get("section")
+        rec = {"row": ri, "source_row": ri, "source_sheet": table["sheet"],
+               "source_item_no": raw_item_no, "source_description": raw_desc,
+               "source_unit": raw_unit, "source_quantity": raw_quantity,
+               "item_no": str(raw_item_no or "").strip(), "description": str(desc or "").strip(),
                "element": str(el or "").strip(), "floor": str(get("floor") or "").strip(),
-               "unit": str(get("unit") or "").strip(), "quantity": None, "rate": None, "issues": []}
+               "unit": str(raw_unit or "").strip(), "section": str(raw_section or "").strip(),
+               "quantity": None, "rate": None, "issues": []}
         if isinstance(q, str):
             rec["issues"].append(f"Quantity '{q[8:]}' is not a number")
             warnings.append(f"Row {ri}: quantity '{q[8:]}' is not a number")

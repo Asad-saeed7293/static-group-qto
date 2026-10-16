@@ -10,10 +10,12 @@ from qto.boq.compare import compare, match_rows, norm_unit, parse_floor, toleran
 from qto.boq.generate import generate_boq  # noqa: E402
 from qto.boq.importer import detect_header, suggest_mapping  # noqa: E402
 from qto.calc.engine import calculate  # noqa: E402
+from qto.calc.validation import validate_calculations  # noqa: E402
 from qto.extract.schedules import parse_level  # noqa: E402
 from qto.extract.tables import _cluster, parse_mm, table_to_records  # noqa: E402
 from qto.geometry import rectangle_dims, same_ring, shoelace_area, simplify_ring  # noqa: E402
-from qto.models import Element, Flag, Measurement, ST_CHECK, ST_MISSING  # noqa: E402
+from qto.models import Element, Flag, Measurement, SourceRef, ST_CHECK, ST_MISSING, ST_REVIEW  # noqa: E402
+from qto.review.queue import build_queue  # noqa: E402
 
 SETTINGS = {"tolerances": [{"max_abs_pct": 2.0, "status": "OK"}, {"max_abs_pct": 5.0, "status": "Check"}],
             "tolerance_above_status": "Review Required", "verified_requires_cross_checks": True}
@@ -96,6 +98,78 @@ def test_slab_volume_uses_net_polygon_area():
     e.dims = {"gross_area": Measurement("gross_area", 100.0), "openings_area": Measurement("openings_area", 10.0),
               "net_area": Measurement("net_area", 90.0), "thickness": Measurement("thickness", 0.25)}
     assert calculate([e])[0].value == pytest.approx(22.5)
+
+
+def _evidenced_footing(uid="FTG-F3-01", handle="A1"):
+    e = _footing(2.0, 2.0, 0.45)
+    e.uid = uid
+    ref = SourceRef("D1", "S-FP.dxf", layer="S-FTG", entity_type="LWPOLYLINE", handle=handle)
+    e.sources = [ref]
+    for measurement in e.dims.values():
+        measurement.ref = ref
+    return e
+
+
+def test_quantity_retains_formula_input_and_entity_evidence():
+    e = _evidenced_footing()
+    q = calculate([e])[0]
+    assert q.value == pytest.approx(1.8)
+    assert q.missing_inputs == []
+    assert any(ev["ref"] and ev["ref"]["handle"] == "A1" for ev in q.evidence)
+    assert q.inputs["depth"]["ref"]["drawing"] == "S-FP.dxf"
+    assert validate_calculations([e], [q]) == []
+
+
+def test_missing_quantity_evidence_enters_review_queue():
+    e = _footing(2.0, 2.0, 0.45)
+    q = calculate([e])[0]
+    issues = validate_calculations([e], [q])
+    assert any(i["code"] == "MISSING_CALCULATION_EVIDENCE" for i in issues)
+    assert q.status == ST_REVIEW
+    queue = build_queue([e.to_dict()], None, {}, {})
+    assert any(i["code"] == "MISSING_CALCULATION_EVIDENCE" for i in queue)
+
+
+@pytest.mark.parametrize("field,value,unit,expected_code", [
+    ("depth", -0.45, "m", "INVALID_CALCULATION_DIMENSION"),
+    ("depth", 0.45, "mm", "UNSUPPORTED_QUANTITY_UNIT"),
+])
+def test_invalid_dimension_or_unit_invalidates_quantity(field, value, unit, expected_code):
+    e = _evidenced_footing()
+    e.dims[field].value = value
+    e.dims[field].unit = unit
+    q = calculate([e])[0]
+    issues = validate_calculations([e], [q])
+    assert any(i["code"] == expected_code for i in issues)
+    assert q.value is None and q.status == ST_MISSING
+
+
+def test_unsupported_quantity_output_unit_invalidates_quantity():
+    e = _evidenced_footing()
+    q = calculate([e])[0]
+    q.unit = "ft3"
+    issues = validate_calculations([e], [q])
+    assert any(i["code"] == "UNSUPPORTED_QUANTITY_UNIT" for i in issues)
+    assert q.value is None and q.status == ST_MISSING
+
+
+def test_missing_formula_input_is_recorded_as_incomplete():
+    e = _evidenced_footing()
+    del e.dims["depth"]
+    q = calculate([e])[0]
+    assert "depth" in q.missing_inputs
+    issues = validate_calculations([e], [q])
+    assert any(i["code"] == "INCOMPLETE_CALCULATION" for i in issues)
+    assert q.value is None
+
+
+def test_duplicate_geometry_handle_is_flagged_for_each_element():
+    first = _evidenced_footing("FTG-F3-01", "A1")
+    second = _evidenced_footing("FTG-F3-02", "A1")
+    quantities = calculate([first, second])
+    issues = validate_calculations([first, second], quantities)
+    assert len([i for i in issues if i["code"] == "DUPLICATE_SOURCE_ENTITY"]) == 2
+    assert all(q.status == ST_CHECK for q in quantities)
 
 
 # --- variance & tolerance ----------------------------------------------------------

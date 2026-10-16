@@ -45,16 +45,31 @@ def build_queue(elements: list, comparison: dict | None, orphans: dict, decision
             items[key] = it
     if comparison:
         for r in comparison["rows"]:
-            if r["status"] in (ST_OK, "Verified") or not r.get("flag"):
+            flags = r.get("flags") or ([r["flag"]] if r.get("flag") else [])
+            if r["status"] in (ST_OK, "Verified") and not flags:
                 continue
-            key = f"CMP:{r['boq_row'] or r['matched_items'][0]}:{r['flag']}"
-            items[key] = {
-                "id": key, "source": "comparison", "code": r["flag"], "title": _cmp_title(r["flag"]),
-                "detail": "; ".join(r["reasons"]), "severity": "warning", "status_impact": r["status"],
-                "element_uids": r["element_uids"], "mark": r.get("boq_element") or "", "element_type": r.get("element_type", ""),
-                "floor": "", "drawing": "", "drawing_id": "", "boq_row": r["boq_row"], "variance_pct": r.get("variance_pct"),
-                "count": len(r["element_uids"]),
-            }
+            for code in flags:
+                key = f"CMP:{r.get('boq_row') or ','.join(r.get('matched_items') or ['unmatched'])}:{code}"
+                items[key] = {
+                    "id": key, "source": "comparison", "code": code, "title": _cmp_title(code),
+                    "detail": "; ".join(r["reasons"]), "severity": "warning", "status_impact": r["status"],
+                    "element_uids": r["element_uids"], "mark": r.get("boq_element") or "", "element_type": r.get("element_type", ""),
+                    "floor": "", "drawing": "", "drawing_id": "", "boq_row": r.get("boq_row"),
+                    "boq_item_no": r.get("boq_item_no", ""), "boq_unit": r.get("boq_unit", ""),
+                    "boq_source_file": r.get("boq_source_file", ""), "boq_sheet": r.get("boq_sheet", ""),
+                    "boq_source_import_id": r.get("boq_source_import_id", ""),
+                    "boq_source_fingerprint": r.get("boq_source_fingerprint", ""),
+                    "variance_pct": r.get("variance_pct"), "match_class": r.get("match_class"),
+                    "mapping_status": r.get("mapping_status"), "mapping_id": r.get("mapping_id"),
+                    "mapping_version": r.get("mapping_version"), "mapping_reviewer": r.get("mapping_reviewer"),
+                    "mapping_timestamp": r.get("mapping_timestamp"), "mapping_target_type": r.get("mapping_target_type"),
+                    "mapping_target_key": r.get("mapping_target_key"), "mapping_target_code": r.get("mapping_target_code"),
+                    "mapping_target_category": r.get("mapping_target_category"), "mapping_target_unit": r.get("mapping_target_unit"),
+                    "mapping_history": r.get("mapping_history", []),
+                    "match_method": r.get("match_method"), "candidate_items": r.get("candidate_items", []),
+                    "calculation_refs": r.get("calculation_refs", []), "candidate_refs": r.get("candidate_refs", []),
+                    "count": len(r["element_uids"]),
+                }
     for t in orphans.get("labels", []):
         key = f"ORPHAN:{t['drawing_id']}:{t['handle']}"
         items[key] = {"id": key, "source": "drawing", "code": "LABEL_NOT_ATTACHED", "title": f"Label '{t['text']}' not attached to geometry",
@@ -86,6 +101,10 @@ def _item(key, source, f, e):
 def _cmp_title(code):
     return {"BOQ_ITEM_NOT_IN_DRAWINGS": "BOQ item not found in drawings",
             "DRAWING_ITEM_NOT_IN_BOQ": "Drawing item missing from BOQ",
-            "UNIT_MISMATCH": "Unit mismatch", "LARGE_VARIANCE": "Large quantity variance",
+            "UNIT_MISMATCH": "Unit mismatch", "BOQ_UNIT_MISSING": "BOQ unit missing",
+            "DUPLICATE_BOQ_CODE": "Duplicate BOQ item code", "AMBIGUOUS_MATCH": "Ambiguous BOQ match",
+            "REUSED_BOQ_CODE": "Reused BOQ display code", "DUPLICATE_DRAWING_MAPPING": "Calculated line mapped more than once",
+            "STALE_BOQ_MAPPING": "Approved BOQ mapping needs review",
+            "LARGE_VARIANCE": "Large quantity variance",
             "VARIANCE_CHECK": "Variance to check", "BOQ_QTY_ZERO": "BOQ quantity is zero",
             "BOQ_QTY_MISSING": "BOQ quantity missing", "MISSING_DRAWING_DATA": "Drawing data missing for BOQ item"}.get(code, code)

@@ -5,6 +5,7 @@ from collections import Counter, defaultdict
 
 from . import store
 from .boq.compare import compare
+from .boq import mappings
 from .models import ST_NO_BOQ
 from .review.queue import build_queue
 
@@ -41,8 +42,18 @@ def comparison(pid):
                  "match_method": ""} for l in r["results"]["boq"]]
         return {"boq": None, "rows": rows, "summary": {"by_status": {ST_NO_BOQ: len(rows)}, "by_category": {}, "total_rows": len(rows), "flags": {}}}
     els = {e["uid"]: e for e in r["results"]["elements"]}
-    c = compare(boq["rows"], r["results"]["boq"], els, store.settings(pid))
-    c["boq"] = {k: boq.get(k) for k in ("import_id", "name", "is_test", "imported", "source_file", "row_count", "mapping")}
+    rows = [dict(row) for row in boq["rows"]]
+    applied, issues = mappings.applicable(pid, boq, rows, r["results"]["boq"])
+    c = compare(rows, r["results"]["boq"], els, store.settings(pid), applied, issues)
+    c["boq"] = {k: boq.get(k) for k in ("import_id", "name", "is_test", "imported", "source_file",
+                                         "source_fingerprint", "row_count", "mapping")}
+    c["run_id"] = r["run"]["run_id"]
+    c["historical_comparison_snapshot"] = None
+    for row in c["rows"]:
+        if row.get("boq_source_row") is not None:
+            row["boq_source_file"] = boq.get("source_file")
+            row["boq_source_import_id"] = boq.get("import_id")
+            row["boq_source_fingerprint"] = boq.get("source_fingerprint")
     return c
 
 

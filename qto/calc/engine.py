@@ -33,7 +33,26 @@ def _element_status(e: Element) -> str:
 
 def _record(e: Element, qtype, unit, value, formula, subst, input_names, assumptions=None, notes=None, idx=1):
     inputs = {k: e.dims[k].to_dict() for k in input_names if k in e.dims}
-    missing = [k for k in input_names if k in e.dims and e.dims[k].value is None]
+    missing = [k for k in input_names if k not in e.dims or e.dims[k].value is None]
+    evidence, seen = [], set()
+    for name in input_names:
+        measurement = e.dims.get(name)
+        if not measurement:
+            continue
+        item = {"input": name, "value": measurement.value, "unit": measurement.unit,
+                "source": measurement.source, "detail": measurement.detail,
+                "ref": measurement.ref.to_dict() if measurement.ref else None}
+        key = (item["input"], item["source"], item["detail"], repr(item["ref"]))
+        if key not in seen:
+            evidence.append(item)
+            seen.add(key)
+    for source in e.sources:
+        ref = source.to_dict()
+        key = ("source", ref.get("drawing_id"), ref.get("handle"), ref.get("entity_type"))
+        if ref.get("drawing") and ref.get("handle") and key not in seen:
+            evidence.append({"input": None, "value": None, "unit": "", "source": "Element source",
+                             "detail": ref.get("note", ""), "ref": ref})
+            seen.add(key)
     status = ST_MISSING if value is None else _element_status(e)
     if value is None and status != ST_MISSING:
         status = ST_MISSING
@@ -48,7 +67,8 @@ def _record(e: Element, qtype, unit, value, formula, subst, input_names, assumpt
     return QuantityRecord(
         qid=f"{e.uid}:{qtype}", element_uid=e.uid, element_type=e.element_type, mark=e.mark, floor=e.floor,
         drawing_id=e.drawing_id, drawing=e.drawing, layer=e.layer, quantity_type=qtype, unit=unit,
-        value=_r(value, 4), formula=formula, substitution=subst, inputs=inputs, assumptions=assm,
+        value=_r(value, 4), formula=formula, substitution=subst, inputs=inputs, evidence=evidence,
+        missing_inputs=missing, assumptions=assm,
         status=status, confidence=round(e.confidence, 2), notes=n)
 
 

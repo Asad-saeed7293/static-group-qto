@@ -363,6 +363,21 @@ def preview_static_boq(pid):
     }
 
 
+def _comparison_evidence(row):
+    refs = row.get("calculation_refs") or row.get("candidate_refs") or []
+    parts = []
+    for ref in refs:
+        qids = ", ".join(ref.get("qids", []))
+        sources = []
+        for calculation in ref.get("evidence", []):
+            for evidence in calculation.get("evidence", []):
+                source = evidence.get("ref") or {}
+                if source:
+                    sources.append(f"{source.get('drawing', '')}#{source.get('handle', '')}")
+        parts.append(f"{ref.get('item_no', '')}: {qids}" + (f" [{', '.join(sources)}]" if sources else ""))
+    return "; ".join(parts)
+
+
 def export_variance(pid, path):
     data = service.results(pid)
     cmp = service.comparison(pid)
@@ -392,13 +407,27 @@ def export_variance(pid, path):
 
     ws2 = wb.create_sheet("Variance")
     r0 = _title(ws2, "Line-by-line comparison", _header_lines(pid, data, banner))
-    rows = [[r.get("boq_item_no"), r.get("boq_description"), r.get("boq_element"), ", ".join(r["matched_items"]),
+    rows = [[r.get("boq_source_file"), r.get("boq_sheet"), r.get("boq_source_row"), r.get("boq_item_no"),
+             r.get("boq_description"), r.get("boq_element"), ", ".join(r["matched_items"]),
              r.get("drawing_description", ""), r.get("boq_unit") or "", r["drawing_quantity"], r["boq_quantity"], r["variance"],
-             r["variance_pct"], r["status"], r.get("match_method", ""), "; ".join(r["reasons"])] for r in cmp["rows"]]
-    _table(ws2, r0, ["BOQ Item", "BOQ Description", "BOQ Element", "Drawing item(s)", "Drawing description", "BOQ Unit",
-                     "Drawing Qty (m3)", "BOQ Qty", "Variance", "Variance %", "Status", "Match method", "Reason / evidence"], rows,
-           [9, 40, 11, 12, 50, 8, 12, 11, 11, 10, 16, 22, 70], {7: "0.000", 8: "0.000", 9: "0.000", 10: "0.00"}, status_col=11,
-           wrap_cols=(2, 5, 13))
+             r.get("absolute_variance"), r["variance_pct"], r["status"], r.get("match_class", ""),
+             r.get("mapping_decision", ""), r.get("match_method", ""), ", ".join(r.get("candidate_items", [])),
+             r.get("mapping_version"), r.get("mapping_reviewer", ""), r.get("mapping_timestamp", ""),
+             r.get("mapping_comment", ""), r.get("boq_source_import_id", ""),
+             r.get("boq_source_fingerprint", ""),
+             r.get("mapping_id", ""), r.get("mapping_target_type", ""), r.get("mapping_target_key", ""),
+             f"{r.get('mapping_target_code', '')} / {r.get('mapping_target_category', '')} / {r.get('mapping_target_unit', '')}",
+             "; ".join(f"v{h.get('version')} {h.get('action')} {h.get('target_id') or ''} by {h.get('reviewer') or 'unavailable'} at {h.get('timestamp')}: {h.get('comment') or ''}"
+                       for h in r.get("mapping_history", [])),
+             _comparison_evidence(r), "; ".join(r["reasons"])] for r in cmp["rows"]]
+    _table(ws2, r0, ["Source file", "Source sheet", "Source row", "BOQ Item", "BOQ Description", "BOQ Element", "Drawing item(s)", "Drawing description", "BOQ Unit",
+                     "Drawing Qty (m3)", "BOQ Qty", "Variance", "Absolute variance", "Variance %", "Status", "Match class",
+                     "Mapping decision", "Match method", "Candidates", "Mapping version", "Reviewer", "Decision time",
+                     "Mapping comment", "Source import ID", "Source fingerprint", "Mapping ID", "Target type", "Target ID", "Target code / category / unit",
+                     "Decision history", "Calculation refs", "Reason / evidence"], rows,
+           [24, 18, 10, 9, 40, 11, 12, 50, 8, 12, 11, 11, 14, 10, 16, 14, 28, 28, 24, 10, 16, 20, 30, 18, 64, 24, 14, 34, 36, 60, 45, 70],
+           {10: "0.000", 11: "0.000", 12: "0.000", 13: "0.000", 14: "0.00"}, status_col=15,
+           wrap_cols=(5, 8, 17, 18, 19, 23, 24, 28, 29, 30, 31))
     wb.save(path)
     return path
 
@@ -410,12 +439,28 @@ def export_review(pid, path):
     ws = wb.active
     ws.title = "Review Queue"
     r0 = _title(ws, "Review report - items requiring engineer attention", _header_lines(pid, data))
-    rows = [[i["id"], i["decision"]["state"], i["status_impact"], i["code"], i["title"], i.get("element_type", ""), i.get("mark", ""),
-             i.get("floor", ""), i.get("drawing", ""), i.get("count", 1), i["detail"], ", ".join(i.get("element_uids", [])[:20]),
+    rows = [[i["id"], i["decision"]["state"], i["status_impact"], i["code"], i["title"], i.get("boq_row", ""),
+             i.get("boq_item_no", ""), i.get("boq_source_file", ""), i.get("boq_sheet", ""),
+             i.get("boq_source_import_id", ""), i.get("boq_source_fingerprint", ""),
+             i.get("match_class", ""), i.get("mapping_status", ""),
+             i.get("mapping_id", ""), i.get("mapping_version"), i.get("mapping_reviewer", ""), i.get("mapping_timestamp", ""),
+             i.get("mapping_target_type", ""), i.get("mapping_target_key", ""), i.get("mapping_target_code", ""),
+             i.get("mapping_target_category", ""), i.get("mapping_target_unit", ""),
+             "; ".join(f"v{h.get('version')} {h.get('action')} {h.get('target_id') or ''} by {h.get('reviewer') or 'unavailable'} at {h.get('timestamp')}: {h.get('comment') or ''}"
+                       for h in i.get("mapping_history", [])),
+             ", ".join(i.get("candidate_items", [])),
+             i.get("element_type", ""), i.get("mark", ""), i.get("floor", ""), i.get("drawing", ""),
+             i.get("count", 1), i["detail"], _comparison_evidence(i), ", ".join(i.get("element_uids", [])[:20]),
              i["decision"].get("comment", ""), i["decision"].get("user", ""), i["decision"].get("at", "")] for i in q]
-    _table(ws, r0, ["Item", "Decision", "Impact", "Code", "Title", "Type", "Element ID", "Floor", "Drawing", "Count", "Why it was flagged",
-                    "Elements", "Reviewer comment", "Reviewer", "Reviewed at"], rows,
-           [26, 10, 15, 22, 34, 9, 10, 6, 14, 6, 80, 40, 30, 10, 18], status_col=3, wrap_cols=(5, 11, 12, 13))
+    _table(ws, r0, ["Item", "Decision", "Impact", "Code", "Title", "BOQ row", "BOQ item code",
+                    "BOQ source file", "BOQ sheet", "Import ID", "Source fingerprint", "Match class",
+                    "Mapping status", "Mapping ID", "Mapping version", "Mapping reviewer", "Mapping decision time",
+                    "Mapping target type", "Mapping target ID", "Mapping target code", "Target category", "Target unit",
+                    "Mapping history", "Candidates",
+                    "Type", "Element ID", "Floor", "Drawing", "Count", "Why it was flagged",
+                    "Calculation refs", "Elements", "Reviewer comment", "Reviewer", "Reviewed at"], rows,
+           [26, 10, 15, 24, 34, 10, 16, 14, 14, 18, 64, 16, 14, 24, 10, 18, 20, 14, 34, 20, 14, 10, 60, 25, 9, 12, 8, 18, 6, 80, 45, 40, 30, 14, 18],
+           status_col=3, wrap_cols=(5, 11, 23, 25, 29, 30, 31, 32, 33))
     wb.save(path)
     return path
 
