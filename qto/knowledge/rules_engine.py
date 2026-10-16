@@ -95,8 +95,13 @@ def update_rule(rule_id: str, action: str, user: str = None, option: str = None,
         if status:
             if status not in STATUSES:
                 raise ValueError("invalid status")
+            if status == "CONFIRMED":
+                raise ValueError("Rules can only be CONFIRMED through the explicit approve action")
             st["status"] = status
         if option is not None:
+            available_options = st.get("options", r["options"])
+            if option and option not in available_options:
+                raise ValueError(f"Unknown option '{option}' for {rule_id}")
             st["selected"] = option or None
         if custom_value is not None:
             st["custom_value"] = custom_value

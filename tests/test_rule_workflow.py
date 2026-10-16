@@ -26,6 +26,19 @@ def _item(pid, iid, variant=""):
     return next(i for i in service.results(pid)["results"]["items"] if i["item_id"] == iid and i["variant"] == variant)
 
 
+def test_rule_edit_cannot_bypass_explicit_approval(tmp_path, monkeypatch):
+    monkeypatch.setattr(rules_engine, "STATE", str(tmp_path / "rule_state.json"))
+    before = load_rules()["beam_depth_method"]
+
+    with pytest.raises(ValueError, match="explicit approve action"):
+        rules_engine.update_rule("beam_depth_method", "edit", status="CONFIRMED", option="full_depth")
+
+    after = load_rules()["beam_depth_method"]
+    assert after["status"] == before["status"] == "UNKNOWN"
+    assert after["selected"] is None
+    assert not os.path.exists(rules_engine.STATE)
+
+
 @pytest.fixture
 def isolated_kawari(tmp_path, monkeypatch):
     """Copy the latest Al-Kawari run into a temporary data folder; rule state and audit also go there."""
