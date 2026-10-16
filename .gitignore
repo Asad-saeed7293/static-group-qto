@@ -8,7 +8,6 @@ data/
 
 # excluded from the public branch only: client-identifying scratch/doc artifacts
 __sg_boq_dump.txt
-README.md
 START_HERE.txt
 *.pptx
 docs/
