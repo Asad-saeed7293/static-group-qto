@@ -1,0 +1,8 @@
+{"at": "2026-10-08T02:43:21", "user": "Dell", "project": "platform", "event": "chat_question", "message": "Which projects have BOQ issues?", "mode": "deterministic", "tools": ["project_status", "project_status", "project_status"]}
+{"at": "2026-10-08T02:49:37", "user": "Dell", "project": "platform", "event": "chat_question", "message": "How much concrete is required across all active projects?", "mode": "deterministic", "tools": ["concrete_all"]}
+{"at": "2026-10-08T13:06:28", "user": "Dell", "project": "platform", "event": "chat_question", "message": "Which projects need attention?", "mode": "deterministic", "tools": ["project_status", "project_status", "project_status"]}
+{"at": "2026-10-08T13:06:30", "user": "Dell", "project": "platform", "event": "chat_question", "message": "What information is missing?", "mode": "deterministic", "tools": ["boq_items"]}
+{"at": "2026-10-08T15:03:15", "user": "Dell", "project": "platform", "event": "chat_question", "message": "Which projects need attention?", "mode": "deterministic", "tools": ["project_status", "project_status", "project_status"]}
+{"at": "2026-10-08T15:30:56", "user": "Dell", "project": "platform", "event": "chat_question", "message": "Which projects need attention?", "mode": "deterministic", "tools": ["project_status", "project_status", "project_status"]}
+{"at": "2026-10-08T15:31:14", "user": "Dell", "project": "platform", "event": "chat_question", "message": "what is BOQ?", "mode": "deterministic", "tools": []}
+{"at": "2026-10-08T15:34:14", "user": "Dell", "project": "platform", "event": "chat_question", "message": "What information is missing?", "mode": "deterministic", "tools": ["boq_items"]}

@@ -1,0 +1,24 @@
+{
+  "_comment": "Default engine settings. Per-project user overrides are stored in data/projects/<id>/overrides.json and every change is written to the audit log.",
+  "tolerances": [
+    {"max_abs_pct": 2.0, "status": "OK"},
+    {"max_abs_pct": 5.0, "status": "Check"}
+  ],
+  "tolerance_above_status": "Review Required",
+  "verified_requires_cross_checks": true,
+  "measurement": {
+    "column_height_basis": "to_slab_soffit",
+    "_column_height_basis_options": "to_slab_soffit = level(top) - level(base) - slab thickness at top; floor_to_floor = level(top) - level(base)",
+    "beam_depth_basis": "below_slab",
+    "_beam_depth_basis_options": "below_slab = deduct slab thickness from overall depth where the family's depth includes the slab; full_depth = no deduction",
+    "slab_area_basis": "gross_less_openings",
+    "deduct_openings_min_area_m2": 0.0
+  },
+  "rounding": {"length_dp": 3, "area_dp": 3, "volume_dp": 3},
+  "ai": {
+    "enabled": false,
+    "provider": "anthropic",
+    "model": "claude-opus-5-5",
+    "_note": "AI is optional and never used for measurements. Set ANTHROPIC_API_KEY and enable to get natural-language explanations."
+  }
+}

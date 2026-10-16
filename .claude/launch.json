@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "qto",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "uvicorn", "server.app:app", "--port", "8765"],
+      "port": 8765
+    }
+  ]
+}

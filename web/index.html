@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Static Group · Automated QTO &amp; Project Intelligence</title>
+<link rel="icon" type="image/png" href="/static/brand/static-mark.png">
+<link rel="stylesheet" href="/static/styles.css?v=3.1.0">
+</head>
+<body>
+<aside id="sidebar" aria-label="Main navigation">
+  <div class="brand">
+    <a href="#/home" aria-label="Static Group home"><img src="/static/brand/static-logo-white.png" alt="STATIC Contracting and Trading and Services"></a>
+    <div class="brand-sub">Automated QTO &amp; Project Intelligence</div>
+  </div>
+  <nav id="nav"></nav>
+  <div class="side-foot"><b>Deterministic engine</b> · every quantity traceable to its drawing<br>Project data stays in-house</div>
+</aside>
+<main>
+  <header id="topbar">
+    <div id="crumb" aria-live="polite"></div>
+    <div class="top-right">
+      <label class="ctx" for="projectSelect">Project <select id="projectSelect" aria-label="Current project"></select></label>
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="search" placeholder="Search elements, BOQ items, drawings…" autocomplete="off" aria-label="Search current project">
+        <div id="searchResults" class="hidden" role="listbox"></div>
+      </div>
+      <div class="user" id="user"><span class="avatar" id="avatar">··</span><span id="userName"></span></div>
+      <span id="runInfo"></span>
+    </div>
+  </header>
+  <section id="main" tabindex="-1"></section>
+</main>
+<div id="drawer" class="hidden" role="dialog" aria-modal="true" aria-label="Details"><div class="drawer-inner"><button class="close" onclick="closeDrawer()" aria-label="Close panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg></button><div id="drawerBody"></div></div></div>
+<dialog id="dlg"><form method="dialog"><div class="dlg-body"><h3 id="dlgTitle"></h3><div id="dlgText" class="small"></div></div><div class="dlg-foot"><button value="cancel" class="sec">Cancel</button><button value="ok" id="dlgOk">Confirm</button></div></form></dialog>
+<div id="toast" class="hidden" role="status" aria-live="polite"></div>
+<script src="/static/app.js?v=3.1.0"></script>
+</body>
+</html>

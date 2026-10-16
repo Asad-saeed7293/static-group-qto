@@ -1,0 +1,8 @@
+{
+  "name": "static-group-qto",
+  "private": true,
+  "scripts": {
+    "dev": ".\\run.bat",
+    "start": ".\\run.bat"
+  }
+}

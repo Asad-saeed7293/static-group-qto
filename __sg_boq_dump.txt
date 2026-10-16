@@ -1,0 +1,121 @@
+   1 | BILL OF QUANTITIES FOR VILLA CONSTRUCTION WORKS |                                                                          | qty=None | None | H=None
+   2 | Project:     | Residential Villa (G+F+PH) + Majlis (G) + Driver'sRoom (G) + Outdoor K   | qty=None | None | H=None
+   3 | Client:      | Mr. Abdulrahman Ali M R Al-Kawari                                        | qty=Ref.No: | QUO-SCC-1525-2026 | H=None
+   4 | Location:    | Al Daayen Municipality, Qatar (Pin No: 70312232)                         | qty=Date: | 2026-08-06 00:00:00 | H=None
+   5 | ITEM         | DESCRIPTION                                                              | qty=QTY | UNIT | H=AMOUNT (QR)
+   6 | B            | VILLA (G+F+PH) & ANNEX BUILDNG 1 & 2, 3 (G)                              | qty=None | None | H=None
+   7 | b.1          | EARTH WORKS                                                              | qty=None | None | H=None
+   8 | 1            | Bulk excavation in Isolated foudations, all tanks                        | qty=2131.2328800000005 | m3 | H=0
+   9 | 2            | Removal of excavated materials from the site                             | qty=2131.2328800000005 | m3 | H=0
+  10 | 3            | Backfilling and compacting with approved material in
+ layers             | qty=1963.855880000001 | m3 | H=0
+  11 | 4            | Anti-termite treatment to horizontal surfaces of ground                  | qty=1 | m2 | H=None
+  12 | 5            | Dewatering                                                               | qty=None | - | H=Excluded
+  14 | b.2          | STRUCTURAL WORKS                                                         | qty=None | None | H=None
+  15 | #            | All blinding concrete to be S.R.C concrete (20 N/mm2 )                   | qty=None | None | H=None
+  16 | #            | All RC column & beam , slab concrete to be grade C30 OPC concrete havi   | qty=None | None | H=None
+  17 | #            | All RC Holding tank, water tank footing &  wall concrete concrete to b   | qty=None | None | H=None
+  18 | #            | The reinforcement used is high yield steel with minimum characteristic   | qty=None | None | H=None
+  20 | b.2.1        | Sub-Structure Works                                                      | qty=None | None | H=None
+  21 | 1            | Villa                                                                    | qty=None | None | H=None
+  22 | 1.1          | Blinding Concrete                                                        | qty=29.506 | m3 | H=0
+  23 | 1.2          | RC Concrete work in Footings                                             | qty=76.3875 | m3 | H=0
+  24 | 1.3          | RC Concrete work in neck Columns                                         | qty=7.5040000000000004 | m3 | H=0
+  25 | 1.4          | RC Concrete work in lift walls & additional concrete                     | qty=7.96 | m3 | H=0
+  26 | 1.5          | RC Concrete work in Ground Beams                                         | qty=43.149 | m3 | H=0
+  27 | 1.6          | RC Concrete in Slab on Grade 
+(Mesh Reinforcement- T10/150mm each way)   | qty=100.815 | m3 | H=0
+  28 | 1.7          | RC Concrete in Steps and landing                                         | qty=6.685499999999999 | m3 | H=0
+  29 | 1.8          | 200mm concrete fillet Block Work in Outer Ground beams                   | qty=171.44 | m2 | H=0
+  30 | 1.9          | Earth filling, compaction in External landscape concrete                 | qty=668.9000000000001 | m2 | H=0
+  31 | 2            | 150mm thk SOG with 1 layer of T10 steel mech in landscaping paving are   | qty=62.19 | m3 | H=0
+  33 | 2            | Tanks                                                                    | qty=None | None | H=None
+  34 | 2.1          | 1) Holding tank - Size ( 4.20 m/L x  2.50 m/W x  5.34 m/H) 
+2) Water t   | qty=None | None | H=None
+  35 | None         | # RC concrete wall are SRC with crystalline admixture/
+waterproofing c   | qty=None | None | H=None
+  36 | 1            | 100mm thk Blinding Concrete                                              | qty=2.4530000000000003 | m3 | H=0
+  37 | 2            | RC Concrete work in footings (400mm thk)                                 | qty=8.66 | m3 | H=0
+  38 | 3            | RC Concrete work in walls (Including PVC Water Stop)                     | qty=25.805 | m3 | H=0
+  39 | 4            | RC Concrete work in Tanks cover Slab (250mm thk)                         | qty=5.4125 | m3 | H=0
+  44 | TOTAL CARRIED TO SUMMARY |                                                                          | qty=None | None | H=0
+  46 | b.2.2        | Substructure Waterproofing                                               | qty=None | None | H=None
+  47 | 1            | Villa (All Tanks ) - (BRAND: SIPLAST FRANCE - (TADMURE)                  | qty=None | None | H=None
+  48 | 1.1          | Horizontal Surfaces: 2 layers of SBS roll Waterproofing membrane 4mm+    | qty=21.65 | m2 | H=0
+  49 | 1.2          | Vertical Surfaces: 2 layers of waterproofing membrane 4mm+ 2 coats of    | qty=116.709 | m2 | H=0
+  51 | 2            | Villa & Annex 
+(Footings + Ground beam + Neck column+ 200mm concrete f   | qty=None | None | H=None
+  52 | 2.1          | Horizontal Surfaces: 3 coats of rubberized bitumen primer + 6mm protec   | qty=451.30999999999995 | m2 | H=0
+  53 | 2.2          | Vertical Surfaces: 3 coats of rubberized bitumen primer + 6mm protecti   | qty=882.7419999999998 | m2 | H=0
+  55 | b.2.3        | Planter box masonry works                                                | qty=None | None | H=None
+  56 | 1.1          | Build in 100mm thk Block planter box in landscape area
+(Front elevatio   | qty=11.4 | m2 | H=None
+  58 | b.2.4        | Super-Structural works                                                   | qty=None | None | H=None
+  59 | 1            | RC Concrete works in Columns & Walls (GF + FF+ PH)                       | qty=106.46910000000001 | m3 | H=0
+  60 | 2            | RC Concrete works in Beams - (GF + FF + PH )                             | qty=135.51203900000002 | m3 | H=0
+  61 | 3            | RC Concrete works in Slabs - (GF + FF + PH )                             | qty=322.863 | m3 | H=0
+  62 | 4            | RC Concrete works in Staircase - (GF to FF & FF to PH)                   | qty=9.64 | m3 | H=0
+  81 | TOTAL CARRIED TO SUMMARY |                                                                          | qty=None | None | H=0
+  83 | b.2.4        | ARCHITECTURAL WORKS                                                      | qty=None | None | H=None
+  84 | 1            | External Block works                                                     | qty=None | None | H=None
+  85 | 1.1          | 200mm thk Block wall (Insulated hollow block wall)                       | qty=246.50699999999998 | m2 | H=0
+  86 | 1.2          | 200mm thk Block wall (Parepet block wall)                                | qty=159.64649999999997 | m2 | H=0
+  87 | 1.3          | 300mm thk  Block wall (Insulated hollow block wall)                      | qty=92.24499999999999 | m2 | H=0
+  88 | 1.4          | 350 mm thick double hollow block insulated wall                          | qty=817.8905 | m2 | H=0
+  89 | 1.5          | 350 mm thick double (solid+hollow) block insulated wall                  | qty=151.734 | m2 | H=0
+  90 | 1.6          | 400mm thk Block wall (Parepet block wall)                                | qty=38.720499999999994 | m2 | H=0
+  91 | 1.7          | 450 mm thick double hollow block insulated wall                          | qty=552.3306 | m2 | H=0
+  92 | 1.8          | 500mm thk Block wall (Parepet block wall)                                | qty=27.651499999999984 | m2 | H=0
+  94 | 2            | Internal Block works                                                     | qty=None | None | H=None
+  95 | 2.1          | 100mm thk Block wall                                                     | qty=68.52 | m2 | H=0
+  96 | 2.2          | 200mm thk Block wall                                                     | qty=1100.113 | m2 | H=0
+  98 | 3            | Lintel Beams                                                             | qty=None | None | H=None
+  99 | 3.1          | External & internal wall litel
+(100mm, 150mm, 200mm, 250mm, 300mm, 450   | qty=788.84 | lm | H=0
+ 123 | TOTAL CARRIED TO SUMMARY |                                                                          | qty=None | None | H=0
+ 124 | D            | Services                                                                 | qty=None | None | H=None
+ 125 | 1            | Drainage Manhole (Size: 600mm/L x 600mm/W x 1000mm/H)                    | qty=12 | nr | H=None
+ 126 | 2            | Rain water Manhole (Size: 400mm/L x 400mm/W x 800mm/H)                   | qty=7 | nr | H=None
+ 127 | 3            | Soak away (Size: 2.1m/Dia x 3.90m/H)                                     | qty=1 | nr | H=None
+ 128 | 4            | Electrical manhole (Size: 600mm/L x 600mm/W x 800mm/H)                   | qty=3 | nr | H=None
+ 130 | E            | MEP works                                                                | qty=None | None | H=None
+ 131 | e.1          | Electrical Works                                                         | qty=None | None | H=None
+ 132 | 1            | 1st fixes only for Electrical in slabs                                   | qty=1 | item | H=None
+ 133 | 2            | HVAC gas pipe sleeves                                                    | qty=1 | item | H=None
+ 134 | 3            | Main cables & ooreedo sleeves                                            | qty=1 | item | H=None
+ 135 | 4            | Electrical & ooreedo manhole piping connection                           | qty=1 | item | H=None
+ 137 | e.2          | Plumbing & Drainage                                                      | qty=None | None | H=None
+ 138 | 1            | External drainage and rain water system 
+(Including Soakaway & road gu   | qty=1 | item | H=None
+ 139 | 2            | Sleeves in risers & shafts                                               | qty=1 | item | H=None
+ 175 | TOTAL CARRIED TO SUMMARY |                                                                          | qty=None | None | H=0
+ 177 | F            | BOUNDARY WALL - (166.5 m/L x 3.15 m/H)                                   | qty=None | None | H=None
+ 178 | f.1          | Earth Works                                                              | qty=None | None | H=None
+ 179 | 1            | Bulk excavation in foundation                                            | qty=372.96000000000004 | m3 | H=0
+ 180 | 2            | Removal of excavated materials from the site                             | qty=372.96000000000004 | m3 | H=0
+ 181 | 3            | Backfilling and compacting with approved material
+ in layers             | qty=295.28260000000006 | m3 | H=0
+ 182 | 4            | Anti-termite treatment to horizontal surfaces of ground                  | qty=1 | item | H=None
+ 183 | 5            | Dewatering                                                               | qty=None | - | H=Excluded
+ 185 | f.2          | Civil Works                                                              | qty=None | None | H=None
+ 186 | 1            | 100mm thk Blinding concrete                                              | qty=16.669999999999998 | m3 | H=0
+ 187 | 2            | RC Concrete work in strip Footing (300mm thk)                            | qty=39.96 | m3 | H=0
+ 188 | 3            | RC Concrete work in Neck Columns                                         | qty=2.0514 | m3 | H=0
+ 189 | 4            | RC Concrete work in ground Beam                                          | qty=19.196 | m3 | H=0
+ 190 | 6            | 200mm concrete solid Block work in outer ground
+Beams                    | qty=94.98 | m2 | H=0
+ 192 | 7            | Sub structure waterproofing                                              | qty=None | None | H=None
+ 193 | 7.1          | 3 coats of rubberized bitumen + 4mm protection board  - Vertical & Hor   | qty=579.3700000000001 | m2 | H=0
+ 195 | 8            | Super structure concrte works                                            | qty=None | None | H=None
+ 196 | 8.1          | RC Concrete work in columns                                              | qty=7.255800000000001 | m3 | H=0
+ 197 | 8.2          | RC Concrete work in stiffener Beam                                       | qty=9.768 | m3 | H=0
+ 199 | c.3          | Masonry work                                                             | qty=None | None | H=None
+ 200 | 1            | 200mm thk Block work                                                     | qty=447.934 | m2 | H=0
+ 226 | TOTAL CARRIED TO SUMMARY |                                                                          | qty=None | None | H=0
+ 227 | None         | SUMMARY                                                                  | qty=None | None | H=None
+ 228 | None         | Page 1                                                                   | qty=- | - | H=0
+ 230 | None         | Page 2                                                                   | qty=- | - | H=0
+ 232 | None         | Page 3                                                                   | qty=- | - | H=0
+ 234 | None         | Page 4                                                                   | qty=- | - | H=0
+ 236 | None         | Page 5                                                                   | qty=- | - | H=0
+ 280 | GRAND TOTAL (QR) |                                                                          | qty=None | None | H=0

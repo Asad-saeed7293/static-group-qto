@@ -1,0 +1,2 @@
+{"at": "2026-10-08T13:13:38", "user": "Dell", "project": "abc", "event": "project_created", "name": "abc", "folder": "D:\\Static-Group-QTO\\data\\projects\\abc\\files\\drawings"}
+{"at": "2026-10-08T14:18:30", "user": "Dell", "project": "abc", "event": "project_archived", "reason": "Test / non-production project created during application testing (no drawings processed)"}

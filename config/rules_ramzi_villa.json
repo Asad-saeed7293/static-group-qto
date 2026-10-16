@@ -1,0 +1,554 @@
+{
+ "_comment": "Classification rules for the Ramzi Villa drawing set. Every convention here was derived from inspecting the DXF files (see docs/INSPECTION_REPORT.md). Nothing in the engine is hard-wired to these names - copy this file and edit it for a new consultant's CAD standard.",
+ "units": {
+  "default_insunits_if_missing": 6,
+  "_note": "INSUNITS 6 = metres. All structural files declare 6; verified against dimension entities (e.g. 0.2 = 200 mm column width)."
+ },
+ "disciplines": [
+  {
+   "folder_regex": "(?i)structural",
+   "discipline": "Structural"
+  },
+  {
+   "folder_regex": "(?i)architect",
+   "discipline": "Architectural"
+  },
+  {
+   "folder_regex": "(?i)mechanical",
+   "discipline": "Mechanical (Plumbing/Drainage)"
+  },
+  {
+   "folder_regex": "(?i)electrical",
+   "discipline": "Electrical"
+  }
+ ],
+ "drawing_roles": [
+  {
+   "role": "foundation_plan",
+   "file_regex": "(?i)(^|[\\\\/])S-FP\\.dxf$",
+   "title": "Foundation Plan"
+  },
+  {
+   "role": "foundation_details",
+   "file_regex": "(?i)(^|[\\\\/])S-FD\\.dxf$",
+   "title": "Foundation Details & Footing Schedule"
+  },
+  {
+   "role": "column_schedule",
+   "file_regex": "(?i)(^|[\\\\/])S-CD\\.dxf$",
+   "title": "Column & Wall Details / Schedule"
+  },
+  {
+   "role": "column_plan",
+   "file_regex": "(?i)(^|[\\\\/])S-CP-\\s*(?P<floor>BS|GR|L1|PH)\\.dxf$",
+   "title": "Column & Wall Layout"
+  },
+  {
+   "role": "framing_plan",
+   "file_regex": "(?i)(^|[\\\\/])S-FR-(?P<floor>GR|L1|PH|TOR)\\.dxf$",
+   "title": "Framing Plan"
+  },
+  {
+   "role": "beam_schedule",
+   "file_regex": "(?i)(^|[\\\\/])S-BD01\\.dxf$",
+   "title": "Beam Schedule"
+  },
+  {
+   "role": "beam_details",
+   "file_regex": "(?i)(^|[\\\\/])S-BD0[2-9]\\.dxf$",
+   "title": "Beam Details"
+  },
+  {
+   "role": "slab_details",
+   "file_regex": "(?i)(^|[\\\\/])S-SD\\d+\\.dxf$",
+   "title": "Slab / Stair Details"
+  },
+  {
+   "role": "punching_details",
+   "file_regex": "(?i)(^|[\\\\/])S-PD\\.dxf$",
+   "title": "Punching Shear Details"
+  },
+  {
+   "role": "general_structural",
+   "file_regex": "(?i)GENERAL STRUCTURAL|LIST OF DRAWINGS",
+   "title": "General Structural"
+  },
+  {
+   "role": "arch_floor_plan",
+   "file_regex": "(?i)(?P<floor>Basement|Ground|First|Penthouse) Floor\\s*-?\\s*Dimensions? Plan",
+   "title": "Architectural Floor Plan (dimensions)"
+  },
+  {
+   "role": "arch_floor_plan",
+   "file_regex": "(?i)(?P<floor>Top of Roof)(\\s*-\\s*Dimensions?)? Plan",
+   "title": "Architectural Roof Plan"
+  },
+  {
+   "role": "site_drainage",
+   "file_regex": "(?i)(^|[\\\\/])DR-050",
+   "title": "Site Drainage Layout"
+  },
+  {
+   "role": "site_electrical",
+   "file_regex": "(?i)(^|[\\\\/])E-050",
+   "title": "Site Electrical Layout"
+  },
+  {
+   "role": "site_plan",
+   "file_regex": "(?i)Site Plan, Location",
+   "title": "Architectural Site Plan"
+  }
+ ],
+ "floors": [
+  {
+   "id": "FDN",
+   "name": "Foundation",
+   "order": 0
+  },
+  {
+   "id": "BS",
+   "name": "Basement",
+   "order": 1,
+   "schedule_row": "BASEMENT FLOOR",
+   "column_plan": "BS",
+   "base": "FDN",
+   "top": "GR"
+  },
+  {
+   "id": "GR",
+   "name": "Ground Floor",
+   "order": 2,
+   "schedule_row": "GROUND FLOOR",
+   "column_plan": "GR",
+   "base": "GR",
+   "top": "L1",
+   "framing_plan": "GR"
+  },
+  {
+   "id": "L1",
+   "name": "First Floor",
+   "order": 3,
+   "schedule_row": "FIRST FLOOR",
+   "column_plan": "L1",
+   "base": "L1",
+   "top": "PH",
+   "framing_plan": "L1"
+  },
+  {
+   "id": "PH",
+   "name": "Penthouse Floor",
+   "order": 4,
+   "schedule_row": "PENTHOUSE FLOOR",
+   "column_plan": "PH",
+   "base": "PH",
+   "top": "TOR",
+   "framing_plan": "PH"
+  },
+  {
+   "id": "TOR",
+   "name": "Top of Roof",
+   "order": 5,
+   "framing_plan": "TOR"
+  }
+ ],
+ "levels": {
+  "_note": "Structural levels per floor are read from 'Iden-Level Plan' block attributes. The most frequent value of the given kind on the drawing is used; ties and spread are reported as review flags.",
+  "sources": {
+   "FDN": {
+    "drawing_role": "foundation_plan",
+    "kind": "T.O.F"
+   },
+   "GR": {
+    "drawing_role": "framing_plan",
+    "floor": "GR",
+    "kind": "T.O.S"
+   },
+   "L1": {
+    "drawing_role": "framing_plan",
+    "floor": "L1",
+    "kind": "T.O.S"
+   },
+   "PH": {
+    "drawing_role": "framing_plan",
+    "floor": "PH",
+    "kind": "T.O.S"
+   },
+   "TOR": {
+    "drawing_role": "framing_plan",
+    "floor": "TOR",
+    "kind": "T.O.S"
+   }
+  }
+ },
+ "layer_roles": [
+  {
+   "role": "footing_outline",
+   "layers": [
+    "S-FNDN-FTNG"
+   ],
+   "entities": [
+    "LWPOLYLINE",
+    "POLYLINE"
+   ],
+   "closed": true,
+   "drawing_roles": [
+    "foundation_plan"
+   ]
+  },
+  {
+   "role": "blinding_outline",
+   "layers": [
+    "S-BLND-BNDY"
+   ],
+   "entities": [
+    "LWPOLYLINE",
+    "POLYLINE"
+   ],
+   "closed": true,
+   "drawing_roles": [
+    "foundation_plan"
+   ]
+  },
+  {
+   "role": "column_outline",
+   "layers": [
+    "X-CO-COLS-OTLN"
+   ],
+   "entities": [
+    "LWPOLYLINE",
+    "POLYLINE"
+   ],
+   "closed": true,
+   "drawing_roles": [
+    "column_plan"
+   ]
+  },
+  {
+   "role": "wall_outline",
+   "layers": [
+    "X-CO-WALL-RCNC",
+    "A-WALL-RCNC"
+   ],
+   "entities": [
+    "LWPOLYLINE",
+    "POLYLINE"
+   ],
+   "closed": true,
+   "drawing_roles": [
+    "column_plan"
+   ]
+  },
+  {
+   "role": "beam_outline",
+   "layers": [
+    "S-FRAM-BEAM-HIDD",
+    "S-FRAM-BEAM"
+   ],
+   "entities": [
+    "LWPOLYLINE",
+    "POLYLINE"
+   ],
+   "closed": true,
+   "drawing_roles": [
+    "framing_plan"
+   ]
+  },
+  {
+   "role": "slab_boundary",
+   "layers": [
+    "X-LOS-SLAB-BNDY"
+   ],
+   "entities": [
+    "LWPOLYLINE",
+    "POLYLINE",
+    "LINE"
+   ],
+   "drawing_roles": [
+    "framing_plan"
+   ]
+  },
+  {
+   "role": "slab_opening",
+   "layers": [
+    "X-LOS-SLAB-SHAFT"
+   ],
+   "entities": [
+    "LWPOLYLINE",
+    "POLYLINE"
+   ],
+   "closed": true,
+   "drawing_roles": [
+    "framing_plan"
+   ]
+  },
+  {
+   "role": "column_section",
+   "layers": [
+    "S-ELEV"
+   ],
+   "entities": [
+    "LWPOLYLINE",
+    "POLYLINE"
+   ],
+   "closed": true,
+   "drawing_roles": [
+    "column_schedule"
+   ]
+  }
+ ],
+ "text_roles": [
+  {
+   "role": "footing_tag",
+   "layers": [
+    "S-FRAM-BEAM-ATXT",
+    "S-FNDN-ATXT"
+   ],
+   "regex": "^(?P<mark>C?F\\d+)$",
+   "drawing_roles": [
+    "foundation_plan"
+   ],
+   "_note": "Footing tags in this set sit on the beam-annotation layer S-FRAM-BEAM-ATXT, so the text pattern is what identifies them."
+  },
+  {
+   "role": "column_tag",
+   "layers": [
+    "S-COLS-ANNO-TEXT"
+   ],
+   "regex": "^(?P<mark>P?C\\d+)$",
+   "drawing_roles": [
+    "column_plan"
+   ]
+  },
+  {
+   "role": "wall_tag",
+   "layers": [
+    "S-COLS-ANNO-TEXT"
+   ],
+   "regex": "^(?P<mark>W\\d+)$",
+   "drawing_roles": [
+    "column_plan"
+   ]
+  },
+  {
+   "role": "beam_mark",
+   "layers": [
+    "S-FRAM-BEAM-ATXT"
+   ],
+   "regex": "^(?P<mark>(?:L1B|PHB|TORB|GRB)\\d+|T\\.B\\d+|C\\.B)(?:-(?P<span>\\d+))?$",
+   "drawing_roles": [
+    "framing_plan"
+   ]
+  },
+  {
+   "role": "beam_size",
+   "layers": [
+    "S-FRAM-BEAM-ATXT"
+   ],
+   "regex": "^B(?P<w>\\d+)\\s*X\\s*(?P<d>\\d+)$",
+   "drawing_roles": [
+    "framing_plan"
+   ]
+  },
+  {
+   "role": "beam_remark",
+   "layers": [
+    "S-FRAM-BEAM-ATXT"
+   ],
+   "regex": "(?i)^(?P<remark>INVERTED|PARTIALLY INVERTED.*)$",
+   "drawing_roles": [
+    "framing_plan"
+   ]
+  },
+  {
+   "role": "pedestal_size",
+   "layers": [
+    "G-SCHD-TXT2"
+   ],
+   "regex": "(?i)^(?P<a>\\d+)\\s*X\\s*(?P<b>\\d+)\\s*X\\s*(?P<c>\\d+)\\s*MM$",
+   "drawing_roles": [
+    "framing_plan"
+   ]
+  },
+  {
+   "role": "pedestal_label",
+   "layers": [
+    "G-SCHD-TXT2"
+   ],
+   "regex": "(?i)^PEDESTAL$",
+   "drawing_roles": [
+    "framing_plan"
+   ]
+  },
+  {
+   "role": "blinding_note",
+   "layers": [
+    "*"
+   ],
+   "regex": "(?i)^(?P<t>\\d+)\\s*mm\\s+BLINDING CONCRETE$",
+   "drawing_roles": [
+    "foundation_details"
+   ]
+  }
+ ],
+ "block_roles": [
+  {
+   "role": "slab_thickness_tag",
+   "block_regex": "^Iden-Slab Thickness$",
+   "attribs": {
+    "thickness_mm": "SLAB_THICKNESS",
+    "slab_type": "SLAB_TYPE"
+   }
+  },
+  {
+   "role": "level_tag",
+   "block_regex": "^Iden-Level Plan$",
+   "attribs": {
+    "value": "%%P0.000",
+    "kind": "F.F.L."
+   }
+  }
+ ],
+ "tables": {
+  "footing_schedule": {
+   "drawing_roles": [
+    "foundation_details"
+   ],
+   "header_must_contain": [
+    "FOOTING NO."
+   ],
+   "columns": {
+    "mark": 0,
+    "w_mm": 1,
+    "l_mm": 2,
+    "d_mm": 3
+   },
+   "header_map": {
+    "mark": "FOOTING NO.",
+    "w_mm": "W (mm)",
+    "l_mm": "L (mm)",
+    "d_mm": "D (mm)"
+   }
+  },
+  "beam_schedule": {
+   "drawing_roles": [
+    "beam_schedule"
+   ],
+   "header_must_contain": [
+    "BEAM MARK"
+   ],
+   "columns": {
+    "mark": 0,
+    "span": 1,
+    "w_mm": 2,
+    "d_mm": 3,
+    "remarks": -1
+   },
+   "header_map": {
+    "mark": "BEAM MARK",
+    "span": "SPAN MARK",
+    "w_mm": "WIDTH (mm)",
+    "d_mm": "DEPTH (mm)",
+    "remarks": "REMARKS"
+   }
+  }
+ },
+ "column_schedule": {
+  "title_regex": "^SCHEDULE OF COLUMNS",
+  "mark_regex": "^P?C\\d+$",
+  "section_role": "column_section",
+  "row_tolerance": 0.45,
+  "col_tolerance": 0.6
+ },
+ "section_details": {
+  "tie_beam": {
+   "drawing_roles": [
+    "foundation_details"
+   ],
+   "title_regex": "TYPICAL SECTION THROUGH T\\.B\\.?(?P<n>\\d+)",
+   "window": {
+    "dx_min": -1.2,
+    "dx_max": 2.5,
+    "dy_min": 0.0,
+    "dy_max": 1.6
+   },
+   "depth_min": 0.3,
+   "depth_max": 1.5,
+   "_note": "Depth = largest vertical DIMENSION within the window above the detail title. Width is taken from the drawn plan geometry."
+  }
+ },
+ "beam_families": [
+  {
+   "regex": "^T\\.B\\d+$",
+   "name": "Tie beam",
+   "depth_source": "section_detail",
+   "depth_includes_slab": false
+  },
+  {
+   "regex": "^GRB\\d+$",
+   "name": "Ground beam",
+   "depth_source": "schedule",
+   "depth_includes_slab": true
+  },
+  {
+   "regex": "^L1B\\d+$",
+   "name": "First floor beam",
+   "depth_source": "schedule",
+   "depth_includes_slab": true
+  },
+  {
+   "regex": "^PHB\\d+$",
+   "name": "Penthouse beam",
+   "depth_source": "schedule",
+   "depth_includes_slab": true
+  },
+  {
+   "regex": "^TORB\\d+$",
+   "name": "Roof beam",
+   "depth_source": "schedule",
+   "depth_includes_slab": true
+  },
+  {
+   "regex": "^C\\.B$",
+   "name": "Connecting beam (no schedule entry)",
+   "depth_source": "none",
+   "depth_includes_slab": true
+  }
+ ],
+ "pairing": {
+  "footing_tag_max_dist": 2.5,
+  "column_tag_max_dist": 1.2,
+  "wall_tag_max_dist": 1.0,
+  "beam_label_max_offset": 0.45,
+  "pedestal_label_max_dist": 2.0,
+  "duplicate_tolerance": 0.002,
+  "geometry_match_tolerance": 0.011
+ },
+ "element_classes": {
+  "beam_min_aspect": 2.0,
+  "pedestal_requires_label": true
+ },
+ "floor_aliases": {
+  "BASEMENT": "BS",
+  "GROUND": "GR",
+  "FIRST": "L1",
+  "PENTHOUSE": "PH",
+  "TOP OF ROOF": "TOR"
+ },
+ "architecture": {
+  "wall_hatch_layers": [
+   "A-WALL-PATT"
+  ],
+  "opening_layers": [
+   "A-GLAZ",
+   "A-DOOR",
+   "A-DOOR-FRAM"
+  ],
+  "_note": "Walls = HATCH on A-WALL-PATT (Revit export, all three projects); concrete STC-RCCE excluded; openings = blocks drawn on A-GLAZ/A-DOOR."
+ },
+ "symbols": {
+  "drainage_manhole": "(?i)DRAINAGE MANHOLE|^MH",
+  "rainwater_manhole": "(?i)RAIN ?WATER MANHOLE|RWMH",
+  "soakaway": "(?i)SOAK",
+  "power_manhole_label": "(?i)POWER MANHOLE"
+ }
+}

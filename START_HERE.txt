@@ -1,0 +1,50 @@
+STATIC GROUP - Automated QTO & BOQ System
+==========================================
+
+URDU (Roman) - DUSRE LAPTOP PE KESE CHALAYEIN
+---------------------------------------------
+1) Python install karein (sirf pehli dafa):
+   - https://www.python.org/downloads/  se Python 3.10 ya naya download karein.
+   - Install ke waqt sab se neeche "Add python.exe to PATH" ZAROOR tick karein.
+   - Phir "Install Now" dabayein.
+
+2) Zip extract karein:
+   - Zip pe right-click > "Extract All..." > koi bhi jagah (Desktop, D:\, kahin bhi).
+   - Behtar hai chhoti jagah extract karein, jaise  D:\  ya  Desktop  (bahut lambe folder path se bachein).
+   - Andar ye cheezein hongi:  START_HERE.txt,  Static-Group-QTO,  DWG
+   - IN TEENO KO SAATH HI RAKHEIN (DWG folder mein drawings hain, use alag na karein).
+
+3) App chalayein:
+   - "Static-Group-QTO" folder kholein aur "run.bat" pe double-click karein.
+   - PEHLI DAFA internet chahiye: packages install hote hain (1-3 minute). Kaala window band na karein.
+   - Browser khud khul jaega:  http://127.0.0.1:8765
+   - Agar browser na khule to khud browser mein ye address likh dein.
+
+4) Rozana use:
+   - Bas "run.bat" pe double-click karein (ab internet ki zaroorat nahi).
+   - Kaam ke dauran kaala window KHULA rakhein. Band karne se app band ho jaati hai.
+
+Agar koi masla aaye:
+   - "Python was not found"  -> Step 1 dobara karein aur "Add python.exe to PATH" tick karein.
+   - "Setup failed"          -> internet check karein, "Static-Group-QTO\.venv" folder delete karein, run.bat dobara chalayein.
+   - "address already in use"-> app pehle se chal rahi hai; browser mein http://127.0.0.1:8765 kholein.
+   - Drawing viewer khaali   -> "DWG" folder "Static-Group-QTO" ke saath wali jagah pe hona chahiye.
+   - "zip is invalid" / path too long -> zip ko chhoti jagah (D:\ ya Desktop) pe rakh kar wahan extract karein.
+
+
+ENGLISH - HOW TO RUN ON ANOTHER LAPTOP
+--------------------------------------
+1) Install Python 3.10 or newer from https://www.python.org/downloads/
+   and tick "Add python.exe to PATH" during setup (one time only).
+2) Extract the zip to a short location such as D:\ or the Desktop. Keep START_HERE.txt, the "Static-Group-QTO"
+   folder and the "DWG" folder (drawings) together.
+3) Open "Static-Group-QTO" and double-click "run.bat".
+   The first start needs internet (installs packages, 1-3 minutes). The browser opens http://127.0.0.1:8765.
+4) Keep the black window open while you work; closing it stops the app.
+
+What is included
+   - The application, with the three reference projects already processed
+     (Ramzi, Al-Kawari, Al-Sulaiti): BOQs, rules, benchmarks, reviews, reports.
+   - The DXF drawing folders and Static Group's historical BOQ files used by those projects.
+   - On first start, run.bat points the projects to the bundled "DWG" folder automatically.
+Project data stays on the computer - nothing is sent to outside services.

@@ -1,0 +1,251 @@
+{
+ "_comment": "Rules for villas drawn to the same consultant CAD standard as the Ramzi villa, without basement (Al-Kawari, Al-Sulaiti). Extends the Ramzi rules; only the differences found by inspecting the files are listed here.",
+ "extends": "rules_ramzi_villa.json",
+ "drawing_roles": [
+  {
+   "role": "foundation_plan",
+   "file_regex": "(?i)(^|[\\\\/])S-FP\\.dxf$",
+   "title": "Foundation Plan"
+  },
+  {
+   "role": "foundation_details",
+   "file_regex": "(?i)(^|[\\\\/])S-FD\\.dxf$",
+   "title": "Foundation Details & Footing Schedule"
+  },
+  {
+   "role": "column_schedule",
+   "file_regex": "(?i)(^|[\\\\/])S-CD\\.dxf$",
+   "title": "Column & Wall Details / Schedule"
+  },
+  {
+   "role": "column_plan",
+   "file_regex": "(?i)(^|[\\\\/])S-CP-\\s*(?P<floor>GR|L1|PH)\\.dxf$",
+   "title": "Column & Wall Layout"
+  },
+  {
+   "role": "framing_plan",
+   "file_regex": "(?i)(^|[\\\\/])S-FR-(?P<floor>S\\.O\\.G|GR|L1|PH|TOR)\\.dxf$",
+   "title": "Framing Plan"
+  },
+  {
+   "role": "beam_schedule",
+   "file_regex": "(?i)(^|[\\\\/])S-BD01\\.dxf$",
+   "title": "Beam Schedule"
+  },
+  {
+   "role": "beam_details",
+   "file_regex": "(?i)(^|[\\\\/])S-BD-?0?[2-9]\\.dxf$",
+   "title": "Beam Details"
+  },
+  {
+   "role": "slab_details",
+   "file_regex": "(?i)(^|[\\\\/])S-SD\\d+\\.dxf$",
+   "title": "Slab / Stair Details"
+  },
+  {
+   "role": "punching_details",
+   "file_regex": "(?i)(^|[\\\\/])S-PD\\.dxf$",
+   "title": "Punching Shear Details"
+  },
+  {
+   "role": "general_structural",
+   "file_regex": "(?i)GENERAL STRUCTURAL|LIST OF DRAWINGS",
+   "title": "General Structural"
+  },
+  {
+   "role": "arch_floor_plan",
+   "file_regex": "(?i)(?P<floor>Basement|Ground|First|Penthouse) Floor\\s*-?\\s*Dimensions? Plan",
+   "title": "Architectural Floor Plan (dimensions)"
+  },
+  {
+   "role": "arch_floor_plan",
+   "file_regex": "(?i)(?P<floor>Top of Roof)(\\s*-\\s*Dimensions?)? Plan",
+   "title": "Architectural Roof Plan"
+  },
+  {
+   "role": "site_drainage",
+   "file_regex": "(?i)(^|[\\\\/])DR-050",
+   "title": "Site Drainage Layout"
+  },
+  {
+   "role": "site_electrical",
+   "file_regex": "(?i)(^|[\\\\/])E-050",
+   "title": "Site Electrical Layout"
+  },
+  {
+   "role": "site_plan",
+   "file_regex": "(?i)Site Plan, Location",
+   "title": "Architectural Site Plan"
+  }
+ ],
+ "floor_aliases": {
+  "S.O.G": "GR",
+  "BASEMENT": "BS",
+  "GROUND": "GR",
+  "FIRST": "L1",
+  "PENTHOUSE": "PH",
+  "TOP OF ROOF": "TOR"
+ },
+ "floors": [
+  {
+   "id": "FDN",
+   "name": "Foundation",
+   "order": 0
+  },
+  {
+   "id": "GR",
+   "name": "Ground Floor",
+   "order": 2,
+   "schedule_row": "GROUND FLOOR",
+   "column_plan": "GR",
+   "base": "GR",
+   "top": "L1",
+   "framing_plan": "GR"
+  },
+  {
+   "id": "L1",
+   "name": "First Floor",
+   "order": 3,
+   "schedule_row": "FIRST FLOOR",
+   "column_plan": "L1",
+   "base": "L1",
+   "top": "PH",
+   "framing_plan": "L1"
+  },
+  {
+   "id": "PH",
+   "name": "Penthouse Floor",
+   "order": 4,
+   "schedule_row": "PENTHOUSE FLOOR",
+   "column_plan": "PH",
+   "base": "PH",
+   "top": "TOR",
+   "framing_plan": "PH"
+  },
+  {
+   "id": "TOR",
+   "name": "Top of Roof",
+   "order": 5,
+   "framing_plan": "TOR"
+  }
+ ],
+ "add_layer_roles": [
+  {
+   "role": "column_outline",
+   "layers": [
+    "A-COLS-OTLN"
+   ],
+   "entities": [
+    "LWPOLYLINE",
+    "POLYLINE"
+   ],
+   "closed": true,
+   "drawing_roles": [
+    "column_plan"
+   ]
+  },
+  {
+   "role": "beam_outline",
+   "layers": [
+    "S-FRAM-BEAM-INV"
+   ],
+   "entities": [
+    "LWPOLYLINE",
+    "POLYLINE"
+   ],
+   "closed": true,
+   "drawing_roles": [
+    "framing_plan"
+   ]
+  },
+  {
+   "role": "neck_column_outline",
+   "layers": [
+    "X-CO-COLS-OTLN",
+    "A-COLS-OTLN"
+   ],
+   "entities": [
+    "LWPOLYLINE",
+    "POLYLINE"
+   ],
+   "closed": true,
+   "drawing_roles": [
+    "foundation_plan"
+   ]
+  },
+  {
+   "role": "lintel_line",
+   "layers": [
+    "BA LINTELS",
+    "BA - LINTELS"
+   ],
+   "entities": [
+    "LWPOLYLINE",
+    "POLYLINE",
+    "LINE"
+   ],
+   "drawing_roles": [
+    "framing_plan"
+   ]
+  }
+ ],
+ "add_text_roles": [
+  {
+   "role": "beam_mark",
+   "layers": [
+    "S-FRAM-BEAM-ATXT"
+   ],
+   "regex": "^(?P<mark>T\\.B\\.?\\d+|(?:L1B|PHB|TORB|GRB)\\d+|C\\.B)(?:-(?P<span>\\d+))?$",
+   "drawing_roles": [
+    "framing_plan"
+   ]
+  },
+  {
+   "role": "footing_tag",
+   "layers": [
+    "S-COLS-ANNO-TEXT"
+   ],
+   "regex": "^(?P<mark>C?F\\d+)$",
+   "drawing_roles": [
+    "foundation_plan"
+   ]
+  },
+  {
+   "role": "column_tag",
+   "layers": [
+    "S-FRAM-BEAM-ATXT"
+   ],
+   "regex": "^(?P<mark>P?C\\d+)$",
+   "drawing_roles": [
+    "column_plan"
+   ]
+  },
+  {
+   "role": "wall_tag",
+   "layers": [
+    "S-FRAM-BEAM-ATXT"
+   ],
+   "regex": "^(?P<mark>W\\d+)$",
+   "drawing_roles": [
+    "column_plan"
+   ]
+  }
+ ],
+ "architecture": {
+  "wall_hatch_layers": [
+   "A-WALL-PATT"
+  ],
+  "opening_layers": [
+   "A-GLAZ",
+   "A-DOOR",
+   "A-DOOR-FRAM"
+  ],
+  "_note": "Walls = HATCH on A-WALL-PATT (Revit export, all three projects); concrete STC-RCCE excluded; openings = blocks drawn on A-GLAZ/A-DOOR."
+ },
+ "symbols": {
+  "drainage_manhole": "(?i)DRAINAGE MANHOLE|^MH",
+  "rainwater_manhole": "(?i)RAIN ?WATER MANHOLE|RWMH",
+  "soakaway": "(?i)SOAK",
+  "power_manhole_label": "(?i)POWER MANHOLE"
+ }
+}

@@ -1,0 +1,31 @@
+{
+  "_comment": "Static Group BOQ layout (sheets, sections, codes, order) matching the real workbook format used in QUO-SCC-1525-2026 and QUO-SCC-1509-2026: 'Preliminaries' / 'BOQ FOR VILLA' / 'Plastering works' sheets, ITEM | DESCRIPTION | QTY | UNIT | RATE | AMOUNT (QR) columns, section codes (A, B, b.1, b.2.1 ...) on heading rows only, plain sequential item numbers (1, 2, 3 ...) reset per section/subsection, and named group headers (n / n.1, n.2 ...) for items that expand into several wall-type/variant lines. Items refer to knowledge-model ids in static_boq_model.json; an item with wall-type variants produces one line per detected variant, nested under its group heading.",
+  "title": "BILL OF QUANTITIES FOR VILLA CONSTRUCTION WORKS",
+  "sections": [
+    {"code": "A", "title": "PRELIMINARIES", "sheet": "Preliminaries", "items": ["PRE-DESIGN", "PRE-PERMIT", "PRE-FENCE"]},
+    {"code": "B", "title": "VILLA & ANNEX BUILDINGS (FULL CORE AND SHELL)", "sheet": "BOQ FOR VILLA", "subsections": [
+      {"code": "b.1", "title": "EARTH WORKS", "items": ["EW-EXC", "EW-REM", "EW-BF", "EW-AT", "EW-DW"]},
+      {"code": "b.2.1", "title": "Sub-Structure Works", "items": ["SUB-BLD", "SUB-FTG", "SUB-NECK", "SUB-LIFT", "SUB-GB", "SUB-SOG", "SUB-STEPS", "SUB-FILLET", "EXT-FILL", "EXT-SOG"]},
+      {"code": "b.2.1.2", "title": "Tanks", "items": ["TANK-BLD", "TANK-FTG", "TANK-WALL", "TANK-SLAB"]},
+      {"code": "b.2.2", "title": "Substructure Waterproofing", "items": ["WP-TANK-H", "WP-TANK-V", "WP-SUB-H", "WP-SUB-V"]},
+      {"code": "b.2.3", "title": "Planter box masonry works / plinths", "items": ["PLANTER", "SUB-PLINTH"]},
+      {"code": "b.2.4", "title": "Super-Structural works", "items": ["SUP-COLW", "SUP-BEAM", "SUP-SLAB", "SUP-STAIR"]},
+      {"code": "b.2.5", "title": "ARCHITECTURAL WORKS", "items": [
+        {"id": "BLK-EXT", "group": "External Block works"},
+        {"id": "BLK-INT", "group": "Internal Block works"},
+        {"id": "LINTEL", "group": "Lintel Beams"}
+      ]}
+    ]},
+    {"code": "C", "title": "INTERNAL & EXTERNAL WALL PLASTERING WORK", "sheet": "Plastering works", "subsections": [
+      {"code": "c.1", "title": "External wall plastering Works", "items": ["PL-EXT", "PL-EXT-BW"]},
+      {"code": "c.2", "title": "Internal wall plastering Works", "items": ["PL-INT"]}
+    ]},
+    {"code": "D", "title": "Services", "sheet": "BOQ FOR VILLA", "items": ["SRV-MH-DR", "SRV-MH-RW", "SRV-SOAK", "SRV-MH-EL"]},
+    {"code": "E", "title": "MEP works", "sheet": "BOQ FOR VILLA", "items": ["MEP-LS"]},
+    {"code": "F", "title": "BOUNDARY WALL", "sheet": "BOQ FOR VILLA", "subsections": [
+      {"code": "f.1", "title": "Earth Works", "items": ["BW-EXC", "BW-REM", "BW-BF", "BW-AT", "BW-DW"]},
+      {"code": "f.2", "title": "Civil Works", "items": ["BW-BLD", "BW-FTG", "BW-NECK", "BW-GB", "BW-FILLET", "BW-WP", "BW-COL", "BW-STIFF"]},
+      {"code": "f.3", "title": "Masonry work", "items": ["BW-BLK"]}
+    ]}
+  ]
+}
