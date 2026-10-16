@@ -5,6 +5,8 @@ __pycache__/
 node_modules/
 data/_dwg_cache/
 data/
+*.lock
+data/boq_mapping_preview.key
 
 # excluded from the public branch only: client-identifying scratch/doc artifacts
 __sg_boq_dump.txt

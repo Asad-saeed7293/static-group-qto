@@ -311,19 +311,24 @@ def _validate_compatibility(row, target):
     if not source_unit or not target_unit or source_unit != target_unit:
         raise ValueError(f"Incompatible or missing units: BOQ '{row.get('unit')}' vs target '{target.get('unit')}'")
 
-    def category_kind(value):
+    def category_kinds(value):
+        # A real description routinely names more than one element type at once (e.g. "blinding
+        # under footings and raft") - taking only the first TYPE_KEYWORDS hit made the match
+        # depend on dict ordering and rejected genuinely compatible pairs like that one against a
+        # target categorised just "Blinding concrete". Collect every keyword that appears instead,
+        # and treat the two sides as compatible as soon as they share any one of them.
         text = norm_description(value)
-        return next((kind for kind, words in TYPE_KEYWORDS.items()
-                     if any(norm_description(word).strip() in text for word in words)), None)
+        return {kind for kind, words in TYPE_KEYWORDS.items()
+                if any(norm_description(word).strip() in text for word in words)}
 
     source_label = row.get("section") or row.get("description", "")
     target_label = target.get("category", "")
-    source_kind, target_kind = category_kind(source_label), category_kind(target_label)
-    if (source_kind or target_kind) and source_kind != target_kind:
+    source_kinds, target_kinds = category_kinds(source_label), category_kinds(target_label)
+    if (source_kinds or target_kinds) and not (source_kinds & target_kinds):
         raise ValueError(f"Selected target category '{target_label}' is incompatible with BOQ category '{source_label}'")
     if source_label and target_label:
         a, b = norm_description(source_label), norm_description(target_label)
-        if source_kind is None and target_kind is None and a != b:
+        if not source_kinds and not target_kinds and a != b:
             raise ValueError(f"Cannot validate category compatibility between '{source_label}' and '{target_label}'")
 
 
