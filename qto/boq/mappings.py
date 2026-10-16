@@ -312,7 +312,11 @@ def _validate_compatibility(row, target):
         raise ValueError(f"Incompatible or missing units: BOQ '{row.get('unit')}' vs target '{target.get('unit')}'")
 
     def category_kinds(value):
-        # Descriptions can name multiple element types, such as blinding under footings and raft.
+        # A real description routinely names more than one element type at once (e.g. "blinding
+        # under footings and raft") - taking only the first TYPE_KEYWORDS hit made the match
+        # depend on dict ordering and rejected genuinely compatible pairs like that one against a
+        # target categorised just "Blinding concrete". Collect every keyword that appears instead,
+        # and treat the two sides as compatible as soon as they share any one of them.
         text = norm_description(value)
         return {kind for kind, words in TYPE_KEYWORDS.items()
                 if any(norm_description(word).strip() in text for word in words)}
@@ -325,7 +329,6 @@ def _validate_compatibility(row, target):
     if source_label and target_label:
         a, b = norm_description(source_label), norm_description(target_label)
         if not source_kinds and not target_kinds and a != b:
-            raise ValueError(f"Cannot validate category compatibility between '{source_label}' and '{target_label}')
             raise ValueError(f"Cannot validate category compatibility between '{source_label}' and '{target_label}'")
 
 

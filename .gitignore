@@ -3,12 +3,12 @@ __pycache__/
 *.pyc
 .pytest_cache/
 node_modules/
-data/_dwg_cache/
 data/
 *.lock
 data/boq_mapping_preview.key
+config/templates/static_group_boq_template.xlsx
 
-# excluded from the public branch only: client-identifying scratch/doc artifacts
+# Public repository excludes client-identifying scratch/doc artifacts.
 __sg_boq_dump.txt
 START_HERE.txt
 *.pptx
