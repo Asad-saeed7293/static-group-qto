@@ -2,10 +2,10 @@
   "projects": [
     {
       "id": "ramzi-villa",
-      "name": "Mr. Ramzi T A Mari Villa - Construction Works",
-      "client": "Mr. Ramzi T A Mari",
-      "location": "Huzoom Lusail, Qatar",
-      "source_folder": "D:\\Mr. Ramzi T A Mari Villa Construction Works Villa  (DXF Drawings Files)",
+      "name": "Reference Villa A - Construction Works",
+      "client": "[redacted - client details not published]",
+      "location": "Lusail, Qatar",
+      "source_folder": "D:\\DemoDrawings\\ReferenceVillaA\\DXF Drawings Files",
       "rules_file": "rules_ramzi_villa.json",
       "historical_boq": null,
       "role": "reference (drawings only - no BOQ supplied)",
@@ -13,40 +13,25 @@
     },
     {
       "id": "kawari-villa",
-      "name": "Mr. Abdulrahman Ali M R Al-Kawari Villa (G+F+PH) + 3 Annex",
-      "client": "Mr. Abdulrahman Ali M R Al-Kawari",
+      "name": "Reference Villa B (G+F+PH) + 3 Annex",
+      "client": "[redacted - client details not published]",
       "location": "Al Daayen Municipality, Qatar",
-      "source_folder": "D:\\Mr. Abdulrahman Ali M R Al-Kawari Villa\\Mr. Abdulrahman Ali M R Al-Kawari Villa\\DFX FILES",
+      "source_folder": "D:\\DemoDrawings\\ReferenceVillaB\\DFX FILES",
       "rules_file": "rules_villa_std.json",
-      "historical_boq": "D:\\Mr. Abdulrahman Ali M R Al-Kawari Villa\\Mr. Abdulrahman Ali M R Al-Kawari Villa\\UPN PRICE BOQ\\Un Price BOQ for Mr. Abdulrahman Ali M R Al-Kawari Villa (G+F+PH)+ 3 Annex Construction work.xlsx",
-      "role": "historical benchmark (drawings + Static Group BOQ QUO-SCC-1525-2026)",
+      "historical_boq": "D:\\DemoDrawings\\ReferenceVillaB\\UPN PRICE BOQ\\Un Price BOQ for Reference Villa B (G+F+PH)+ 3 Annex Construction work.xlsx",
+      "role": "historical benchmark (drawings + Static Group BOQ - ref redacted)",
       "created": "2026-10-08"
     },
     {
       "id": "sulaiti-villa",
-      "name": "Mr. Abdulla Ali J Alsulaiti Villa (G+F+PH) + Annex (G)",
-      "client": "Mr. Abdulla Ali J Alsulaiti",
+      "name": "Reference Villa C (G+F+PH) + Annex (G)",
+      "client": "[redacted - client details not published]",
       "location": "Al Daayen Municipality, Qatar",
-      "source_folder": "D:\\Mr. Abdulla Ali J Alsulaiti  Villa Construction\\Mr. Abdulla Ali J Alsulaiti  Villa Construction\\DFX FILES",
+      "source_folder": "D:\\DemoDrawings\\ReferenceVillaC\\DFX FILES",
       "rules_file": "rules_villa_std.json",
-      "historical_boq": "D:\\Mr. Abdulla Ali J Alsulaiti  Villa Construction\\Mr. Abdulla Ali J Alsulaiti  Villa Construction\\UN PRICE BOQ\\Un Price BOQ for Mr. Abdulla Ali J Alsulaiti Villa (G+F+PH)+ Annex building(G) Construction works.xlsx",
-      "role": "historical benchmark (drawings + Static Group BOQ QUO-SCC-1509-2026)",
+      "historical_boq": "D:\\DemoDrawings\\ReferenceVillaC\\UN PRICE BOQ\\Un Price BOQ for Reference Villa C (G+F+PH)+ Annex building(G) Construction works.xlsx",
+      "role": "historical benchmark (drawings + Static Group BOQ - ref redacted)",
       "created": "2026-10-08"
-    },
-    {
-      "id": "abc",
-      "name": "abc",
-      "client": "",
-      "location": "",
-      "source_folder": "D:\\Static-Group-QTO\\data\\projects\\abc\\files\\drawings",
-      "rules_file": "rules_ramzi_villa.json",
-      "historical_boq": null,
-      "role": "new project",
-      "created": "2026-10-08",
-      "archived": true,
-      "archived_reason": "Test / non-production project created during application testing (no drawings processed)",
-      "archived_at": "2026-10-08T14:18:30",
-      "archived_by": "Dell"
     }
   ]
 }

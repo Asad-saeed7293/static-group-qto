@@ -1,5 +1,5 @@
 {
-  "_comment": "Static Group BOQ Knowledge Model v1. Seeded from the two historical BOQs with quantities (Al-Kawari QUO-SCC-1525-2026, Al-Sulaiti QUO-SCC-1509-2026). Each canonical item generalises the same line across projects: how Static Group words it, measures it, from which drawings, and how far it can be automated today. 'engine' declares how the deterministic engine computes it; null = not yet automated. Nothing here is a quantity.",
+  "_comment": "Static Group BOQ Knowledge Model v1. Seeded from the two historical BOQs with quantities (Villa B QUO-SCC-1525-2026, Villa C QUO-SCC-1509-2026). Each canonical item generalises the same line across projects: how Static Group words it, measures it, from which drawings, and how far it can be automated today. 'engine' declares how the deterministic engine computes it; null = not yet automated. Nothing here is a quantity.",
   "version": "1.0",
   "statuses": ["Automatically Calculated", "Calculated With Assumption", "Requires Input", "Requires Engineer Review", "Not Available From Drawing", "Not Applicable", "Lump Sum"],
   "items": [

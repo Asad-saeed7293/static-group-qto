@@ -1,5 +1,5 @@
 {
- "_comment": "Rules for villas drawn to the same consultant CAD standard as the Ramzi villa, without basement (Al-Kawari, Al-Sulaiti). Extends the Ramzi rules; only the differences found by inspecting the files are listed here.",
+ "_comment": "Rules for villas drawn to the same consultant CAD standard as the Ramzi villa, without basement (Villa B, Villa C). Extends the Ramzi rules; only the differences found by inspecting the files are listed here.",
  "extends": "rules_ramzi_villa.json",
  "drawing_roles": [
   {

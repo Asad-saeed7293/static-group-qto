@@ -4,3 +4,11 @@ __pycache__/
 .pytest_cache/
 node_modules/
 data/_dwg_cache/
+data/
+
+# excluded from the public branch only: client-identifying scratch/doc artifacts
+__sg_boq_dump.txt
+README.md
+START_HERE.txt
+*.pptx
+docs/
