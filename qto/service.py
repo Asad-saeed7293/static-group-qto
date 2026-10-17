@@ -18,10 +18,13 @@ def results(pid):
         return None
     key = (pid, rid)
     if key not in _cache:
+        meta = store.run_metadata(pid, rid)
+        result = store.read_project_run(pid, rid, "results.json")
+        if result is None or meta.get("status") not in ("completed", "completed with errors"):
+            return None
         _cache.clear()
-        _cache[key] = {"results": store.read_json(store.run_path(pid, rid, "results.json")),
-                       "run": store.read_json(store.run_path(pid, rid, "run.json")),
-                       "drawings": store.read_json(store.run_path(pid, rid, "drawings.json"))}
+        _cache[key] = {"results": result, "run": meta,
+                       "drawings": store.read_project_run(pid, rid, "drawings.json") or []}
     return _cache[key]
 
 

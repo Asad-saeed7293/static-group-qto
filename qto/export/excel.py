@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import date
 
 from openpyxl import Workbook
 from openpyxl.comments import Comment
@@ -136,230 +137,74 @@ def export_boq(pid, path):
     return path
 
 
-ACCOUNTING_FMT = r'_(* #,##0.00_);_(* \(#,##0.00\);_(* "-"??_);_(@_)'
 SG_SHEET_ORDER = ["Preliminaries", "BOQ FOR VILLA", "Plastering works"]
-SG_COL_WIDTHS = {"C": 9, "D": 62, "E": 10, "F": 8, "G": 11, "H": 16}
-
-
-def _sg_header_block(ws, title, p, boq_meta):
-    """Static Group's own commercial header: title row, Project/Client/Location/Ref.No/Date, then the
-    ITEM | DESCRIPTION | QTY | UNIT | RATE | AMOUNT (QR) column row - identical on every BOQ sheet,
-    matching the historical workbooks (e.g. QUO-SCC-1525-2026)."""
-    ws.merge_cells("C1:H1")
-    ws["C1"] = title
-    ws["C1"].font = Font(bold=True, size=14, color=NAVY)
-    ws["C2"], ws["D2"] = "Project:", p["name"]
-    ws["C3"], ws["D3"], ws["E3"], ws["F3"] = "Client:", p.get("client") or "", "Ref.No:", boq_meta.get("ref") or ""
-    ws["C4"], ws["D4"], ws["E4"], ws["F4"] = "Location:", p.get("location") or "", "Date:", (boq_meta.get("date") or "")[:10]
-    hdr = ["ITEM", "DESCRIPTION", "QTY", "UNIT", "RATE", "AMOUNT (QR)"]
-    for j, h in enumerate(hdr, start=3):
-        c = ws.cell(row=5, column=j, value=h)
-        c.font = Font(bold=True, color="FFFFFF")
-        c.fill = PatternFill("solid", fgColor=NAVY)
-        c.border = BORDER
-    for col, w in SG_COL_WIDTHS.items():
-        ws.column_dimensions[col].width = w
-    ws.freeze_panes = ws.cell(row=6, column=3)
 
 
 def export_static_boq(pid, path):
-    """BOQ in Static Group's own workbook format: 'Preliminaries' / 'BOQ FOR VILLA' / 'Plastering works'
-    sheets with the ITEM | DESCRIPTION | QTY | UNIT | RATE | AMOUNT (QR) layout, section codes on heading
-    rows only, plain item numbering reset per section, a 'TOTAL CARRIED TO SUMMARY' subtotal per section
-    and a 'Summary' sheet with the grand total - matching the historical Static Group BOQs. RATE is left
-    blank for pricing; AMOUNT is a live formula (=QTY*RATE), never a hard-coded number. Every line's
-    evidence (status, rule, candidates, source, confidence) is kept in a separate 'Calculation Detail'
-    sheet, keyed by the same item/variant as the commercial sheets, so nothing is lost or fabricated."""
-    from ..boq.static_template import generate_static_boq
-    data = service.results(pid)
-    items = data["results"].get("items") or []
-    b = generate_static_boq(items)
-    p = store.project(pid)
-    boq_meta = (store.read_json(store.pdir(pid, "benchmark.json")) or {}).get("boq_meta", {})
-    # template order (A, B, C, D, E, F ...), for the Summary sheet - sections close in whatever order their
-    # sheet happens to move on to the next one, which is not the same as template order once several
-    # sections share a sheet (B/D/E/F all on "BOQ FOR VILLA"), so this has to be tracked separately
-    section_order = {}
-    for l in b["lines"]:
-        section_order.setdefault(l["section"], len(section_order))
-
-    wb = Workbook()
-    wb.remove(wb.active)
-    sheets = {name: wb.create_sheet(name) for name in SG_SHEET_ORDER}
-    for ws in sheets.values():
-        _sg_header_block(ws, b["title"], p, boq_meta)
-
-    row = {name: 6 for name in sheets}
-    open_section = {name: None for name in sheets}        # (code, title, start_row) of the section being written
-    last_subsection = {name: None for name in sheets}
-    section_totals = []                                   # (code, title, sheet, total_cell) in template order, for the Summary sheet
-
-    def close_section(sh):
-        code, title, start = open_section[sh]
-        if row[sh] > start:                                # the section produced at least one row
-            ws = sheets[sh]
-            row[sh] += 1
-            ws.cell(row=row[sh], column=3, value="TOTAL CARRIED TO SUMMARY").font = Font(bold=True)
-            tc = ws.cell(row=row[sh], column=8, value=f"=SUM(H{start}:H{row[sh] - 1})")
-            tc.font = Font(bold=True)
-            tc.number_format = ACCOUNTING_FMT
-            section_totals.append((code, title, sh, f"'{sh}'!H{row[sh]}"))
-            row[sh] += 2
-        open_section[sh] = None
-
-    for l in b["lines"]:
-        sh = l["sheet"]
-        if sh not in sheets:                                # defensive: an unexpected sheet name falls back to the main one
-            sh = "BOQ FOR VILLA" if "BOQ FOR VILLA" in sheets else next(iter(sheets))
-        ws = sheets[sh]
-        if open_section[sh] and l["section"] != open_section[sh][0]:
-            close_section(sh)
-        if open_section[sh] is None:
-            ws.cell(row=row[sh], column=3, value=l["section"]).font = Font(bold=True)
-            ws.cell(row=row[sh], column=4, value=l["section_title"]).font = Font(bold=True)
-            row[sh] += 1
-            open_section[sh] = (l["section"], l["section_title"], row[sh])
-            last_subsection[sh] = None
-        if l["subsection"] and l["subsection"] != last_subsection[sh]:
-            ws.cell(row=row[sh], column=3, value=l["subsection"]).font = Font(bold=True)
-            ws.cell(row=row[sh], column=4, value=l["subsection_title"]).font = Font(bold=True)
-            row[sh] += 1
-            last_subsection[sh] = l["subsection"]
-        r = row[sh]
-        ws.cell(row=r, column=3, value=l["code"])
-        dcell = ws.cell(row=r, column=4, value=l["description"])
-        dcell.alignment = Alignment(wrap_text=True, vertical="top")
-        if l.get("is_group_header"):
-            ws.cell(row=r, column=3).font = Font(bold=True)
-            dcell.font = Font(bold=True)
-        else:
-            if l["display_status"] == "Excluded":
-                ws.cell(row=r, column=6, value=l["unit"] or "-")
-                ws.cell(row=r, column=8, value="Excluded")
-            elif l["display_status"] == "Lump Sum":
-                ws.cell(row=r, column=5, value=l["quantity"] if l["quantity"] is not None else 1)
-                ws.cell(row=r, column=6, value=l["unit"])
-                ws.cell(row=r, column=7, value="ls")
-            else:
-                if l["quantity"] is not None:
-                    qc = ws.cell(row=r, column=5, value=l["quantity"])
-                    qc.number_format = ACCOUNTING_FMT
-                ws.cell(row=r, column=6, value=l["unit"])
-                if l.get("suggested_rate") is not None:
-                    rc = ws.cell(row=r, column=7, value=l["suggested_rate"])
-                    rc.font = Font(italic=True, color="946F00")
-                    rc.comment = Comment(f"Suggested rate from rate memory ({l.get('suggested_rate_source') or 'a past priced BOQ'}). "
-                                         "Not confirmed - review and overwrite before this BOQ is priced.", "Static Group QTO")
-                if l["quantity"] is not None:
-                    ac = ws.cell(row=r, column=8, value=f"=E{r}*G{r}")
-                    ac.number_format = ACCOUNTING_FMT
-            ws.cell(row=r, column=7).number_format = ACCOUNTING_FMT
-        row[sh] += 1
-    for sh in sheets:
-        if open_section[sh]:
-            close_section(sh)
-
-    # Summary sheet: one row per top-level section (in template order) referencing its subtotal, + grand total
-    sm = wb.create_sheet("Summary")
-    _sg_header_block(sm, b["title"], p, boq_meta)
-    section_totals.sort(key=lambda t: section_order[t[0]])
-    r = 6
-    for code, title, sh, cell in section_totals:
-        sm.cell(row=r, column=3, value=code).font = Font(bold=True)
-        sm.cell(row=r, column=4, value=title)
-        tc = sm.cell(row=r, column=8, value=f"={cell}")
-        tc.number_format = ACCOUNTING_FMT
-        r += 1
-    r += 1
-    sm.cell(row=r, column=3, value="GRAND TOTAL (QR)").font = Font(bold=True, size=12)
-    gc = sm.cell(row=r, column=8, value=f"=SUM(H6:H{r - 2})")
-    gc.font = Font(bold=True, size=12)
-    gc.number_format = ACCOUNTING_FMT
-
-    # Calculation Detail: the evidence behind every commercial line (status, rule, candidates, source, confidence),
-    # cross-referenced by sheet + item/variant since "code" (1, 1.1, 2 ...) repeats across sections by design.
-    dt = wb.create_sheet("Calculation Detail")
-    detail_fills = {"Calculated": "C6EFCE", "Estimated": "E2F0D9", "Needs Review": "FFEB9C",
-                     "Missing": "FFC7CE", "Lump Sum": "EDEDED", "Excluded": "EDEDED"}
-    rows = [[l["sheet"], l["section"], l["subsection"], l["group"], l["code"], l["item_id"], l["variant"], l["description"], l["unit"],
-             l["quantity"], l["display_status"], l["calculation_status"], l["rule_status"], ", ".join(l["rules"]),
-             "; ".join(f"{k}: {v}" for k, v in l["candidates"].items() if v is not None), "; ".join(l["missing"]), l["source"], l["confidence"]]
-            for l in b["lines"] if not l.get("is_group_header")]
-    _table(dt, 1, ["Sheet", "Section", "Subsection", "Group", "Code", "Item ID", "Variant", "Description", "Unit", "Quantity",
-                  "Status", "Calculation status", "Rule status", "Open rules", "Candidates (method UNKNOWN)",
-                  "Missing information", "Source / evidence", "Confidence"],
-           rows, [16, 8, 10, 22, 8, 10, 16, 50, 7, 11, 13, 22, 13, 24, 45, 45, 50, 10], {10: "#,##0.000"}, status_col=11,
-           wrap_cols=(8, 15, 16, 17))
-    for i, r in enumerate(rows, start=2):                   # status fill (_table only fills colors it already knows about)
-        s = r[10]
-        if s in detail_fills:
-            dt.cell(row=i, column=11).fill = PatternFill("solid", fgColor=detail_fills[s])
-
-    wb.save(path)
-    return path
+    """Export quantities in the supplied Static Group workbook layout."""
+    from .static_boq import export_static_boq as export_from_template
+    return export_from_template(pid, path)
 
 
 def preview_static_boq(pid):
-    """JSON mirror of export_static_boq's row layout - same sheets, same section/subsection/group headers,
-    same plain per-section numbering and the same 'TOTAL CARRIED TO SUMMARY' placement - so the in-app
-    preview shows exactly what Export Excel will produce before anyone downloads it. No file is written and
-    no formulas are evaluated. RATE is blank unless rate memory (qto/knowledge/rates.py) has a real,
-    previously-entered rate for that item - then it is shown as a SUGGESTED rate, clearly distinguished
-    from a confirmed price, never computed or guessed from anything but a real past entry.
-    Keep this in sync with export_static_boq's loop above if that sequencing ever changes."""
+    """Preview the supplied workbook's actual row structure and safely matched quantities."""
+    import os
+    import re
+    import openpyxl
+    from .static_boq import SHEET_LAYOUTS, _match_line, _section_ranges
     from ..boq.static_template import generate_static_boq
     data = service.results(pid)
     items = data["results"].get("items") or []
-    b = generate_static_boq(items)
+    lines = generate_static_boq(items)["lines"]
     p = store.project(pid)
-    boq_meta = (store.read_json(store.pdir(pid, "benchmark.json")) or {}).get("boq_meta", {})
-    section_order = {}
-    for l in b["lines"]:
-        section_order.setdefault(l["section"], len(section_order))
-
+    template_path = os.path.join(store.CONFIG, "templates", "static_group_boq_template.xlsx")
+    wb = openpyxl.load_workbook(template_path, data_only=False)
     sheets = {name: [] for name in SG_SHEET_ORDER}
-    open_section = {name: None for name in sheets}
-    last_subsection = {name: None for name in sheets}
-    section_totals = []
+    layouts = {name: SHEET_LAYOUTS[name] for name in SG_SHEET_ORDER}
+    ranges = {name: _section_ranges(wb[name], layouts[name]) for name in SG_SHEET_ORDER}
+    used = {name: set() for name in SG_SHEET_ORDER}
+    mapped = {}
+    for line in lines:
+        name = line.get("sheet") if line.get("sheet") in sheets else "BOQ FOR VILLA"
+        row = _match_line(wb[name], line, layouts[name], ranges[name], used[name])
+        if row is not None:
+            used[name].add(row)
+            mapped[(name, row)] = line
 
-    def close_section(sh):
-        code, title, start = open_section[sh]
-        if len(sheets[sh]) > start:
-            sheets[sh].append({"row": "subtotal"})
-            section_totals.append((code, title))
-        open_section[sh] = None
-
-    for l in b["lines"]:
-        sh = l["sheet"]
-        if sh not in sheets:
-            sh = "BOQ FOR VILLA" if "BOQ FOR VILLA" in sheets else next(iter(sheets))
-        if open_section[sh] and l["section"] != open_section[sh][0]:
-            close_section(sh)
-        if open_section[sh] is None:
-            sheets[sh].append({"row": "section", "code": l["section"], "title": l["section_title"]})
-            open_section[sh] = (l["section"], l["section_title"], len(sheets[sh]))
-            last_subsection[sh] = None
-        if l["subsection"] and l["subsection"] != last_subsection[sh]:
-            sheets[sh].append({"row": "subsection", "code": l["subsection"], "title": l["subsection_title"]})
-            last_subsection[sh] = l["subsection"]
-        if l.get("is_group_header"):
-            sheets[sh].append({"row": "group", "code": l["code"], "title": l["description"]})
-        else:
-            sheets[sh].append({"row": "item", "code": l["code"], "description": l["description"], "unit": l["unit"],
-                                "quantity": l["quantity"], "display_status": l["display_status"],
-                                "suggested_rate": l.get("suggested_rate"), "suggested_rate_source": l.get("suggested_rate_source")})
-    for sh in sheets:
-        if open_section[sh]:
-            close_section(sh)
-
-    section_totals.sort(key=lambda t: section_order[t[0]])
+    for name in SG_SHEET_ORDER:
+        ws, layout = wb[name], layouts[name]
+        code_col, desc_col = layout["section_col"], layout["desc_col"]
+        for row in range(6, ws.max_row + 1):
+            code, description = ws.cell(row, code_col).value, ws.cell(row, desc_col).value
+            if code is None and description is None:
+                continue
+            row_kind = "item"
+            if isinstance(code, str) and code.strip() in {"A", "B", "C", "D", "E", "F"} and ws.cell(row, code_col).font.bold:
+                row_kind = "section"
+            elif isinstance(code, str) and re.match(r"^[a-f]\.\d", code.strip()) and ws.cell(row, code_col).font.bold:
+                row_kind = "subsection"
+            elif isinstance(description, str) and "TOTAL CARRIED TO SUMMARY" in description:
+                row_kind = "subtotal"
+            entry = {"row": row_kind, "code": code, "description": description,
+                     "title": description, "unit": ws.cell(row, layout["qty_col"] + 1).value,
+                     "quantity": None,
+                     "display_status": ""}
+            line = mapped.get((name, row))
+            if line:
+                entry["display_status"] = line.get("display_status", "")
+                if line.get("display_status") == "Lump Sum":
+                    entry["quantity"] = line.get("quantity") or 1
+                elif line.get("quantity") is not None:
+                    entry["quantity"] = line["quantity"]
+            sheets[name].append(entry)
     return {
-        "title": b["title"],
+        "title": wb["Summary"]["B1"].value or "BILL OF QUANTITIES FOR VILLA CONSTRUCTION WORKS",
         "project": {"name": p["name"], "client": p.get("client") or "", "location": p.get("location") or ""},
-        "boq_meta": {"ref": boq_meta.get("ref") or "", "date": (boq_meta.get("date") or "")[:10]},
+        "boq_meta": {"ref": p.get("ref_no") or "", "date": date.today().isoformat()},
         "sheet_order": SG_SHEET_ORDER,
         "sheets": sheets,
-        "summary": [{"code": c, "title": t} for c, t in section_totals],
+        "summary": [{"code": wb["Summary"].cell(row, 2).value,
+                     "title": wb["Summary"].cell(row, 3).value} for row in (7, 9, 11)],
     }
 
 

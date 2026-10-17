@@ -1,5 +1,5 @@
 {
-  "name": "static-group-qto",
+  "name": "qto-boq-automation",
   "private": true,
   "scripts": {
     "dev": ".\\run.bat",

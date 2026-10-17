@@ -27,8 +27,9 @@ from qto.ai.explain import explain_element, explain_comparison_row, search  # no
 from qto.boq import importer  # noqa: E402
 from qto.export import excel  # noqa: E402
 from qto.pipeline import Progress, recalc, run_full  # noqa: E402
+from qto.scan import list_files  # noqa: E402
 
-app = FastAPI(title="Static Group QTO & BOQ Verification", version="0.9")
+app = FastAPI(title="QTO & BOQ Automation", version="0.9")
 WEB = os.path.join(ROOT, "web")
 app.mount("/static", StaticFiles(directory=WEB), name="static")
 
@@ -39,10 +40,20 @@ UPLOADS = os.path.join(tempfile.gettempdir(), "static_qto_uploads")
 def _need(pid):
     try:
         store.project(pid)
-    except KeyError:
+    except (KeyError, ValueError):
         raise HTTPException(404, f"Unknown project {pid}")
-    r = service.results(pid)
+    try:
+        r = service.results(pid)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(409, f"This project's latest run is invalid: {exc}")
     return r
+
+
+def _known(pid):
+    try:
+        return store.project(pid)
+    except (KeyError, ValueError):
+        raise HTTPException(404, f"Unknown project {pid}")
 
 
 def _results(pid):
@@ -63,25 +74,37 @@ def projects():
     out = []
     for p in store.projects():
         rid = store.latest_run_id(p["id"])
-        run = store.read_json(store.run_path(p["id"], rid, "run.json")) if rid else None
+        try:
+            run = store.run_metadata(p["id"], rid) if rid else None
+        except KeyError as exc:
+            run, rid, run_error = None, None, str(exc)
+        else:
+            run_error = None
         out.append({**p, "latest_run": rid, "counts": run["counts"] if run else None,
-                    "folder_exists": os.path.isdir(p["source_folder"])})
+                    "run_error": run_error, "folder_exists": os.path.isdir(p["source_folder"])})
     return out
 
 
 @app.post("/api/projects")
 def add_project(body: dict = Body(...)):
     name, folder = body.get("name", "").strip(), body.get("source_folder", "").strip()
-    pid = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40] or uuid.uuid4().hex[:8]
     if not name:
         raise HTTPException(400, "name is required")
+    # Project identity is persistent and independent of its editable display name.
+    pid = "p-" + uuid.uuid4().hex
+    rules_file = body.get("rules_file") or "rules_villa_std.json"
+    try:
+        store._validate_rules_file(rules_file)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
     if body.get("mode") == "upload" or not folder:
         folder = store.pdir(pid, "files", "drawings")   # drawings will be uploaded into the project
         os.makedirs(folder, exist_ok=True)
     elif not os.path.isdir(folder):
         raise HTTPException(400, f"Folder not found: {folder}")
     rec = {"id": pid, "name": name, "client": body.get("client", ""), "location": body.get("location", ""),
-           "source_folder": folder, "rules_file": body.get("rules_file") or "rules_villa_std.json", "historical_boq": None,
+           "project_type": body.get("project_type", ""), "metadata": body.get("metadata", {}),
+           "source_folder": folder, "rules_file": rules_file, "historical_boq": None,
            "role": "new project", "created": store.now()[:10]}
     try:
         store.add_project(rec)
@@ -91,8 +114,20 @@ def add_project(body: dict = Body(...)):
     return rec
 
 
+@app.patch("/api/projects/{pid}")
+def update_project(pid: str, body: dict = Body(...)):
+    try:
+        return store.update_project(pid, body)
+    except KeyError:
+        raise HTTPException(404, f"Unknown project {pid}")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
 UPLOAD_KINDS = {"drawings": (".dxf", ".dwg", ".pdf", ".zip"), "schedules": (".dxf", ".pdf", ".xlsx", ".csv", ".zip"),
-                "specifications": (".pdf", ".docx", ".zip"), "client_boq": (".xlsx", ".csv")}
+                "specifications": (".pdf", ".docx", ".zip"), "client_boq": (".xlsx", ".csv"),
+                "references": (".pdf", ".doc", ".docx", ".xls", ".xlsx", ".xlsm", ".csv", ".tsv", ".txt",
+                               ".rtf", ".jpg", ".jpeg", ".png", ".gif", ".tif", ".tiff", ".ifc", ".rvt", ".zip")}
 
 
 def _safe_rel_path(raw: str) -> str | None:
@@ -115,6 +150,83 @@ def _within(base: str, target: str) -> bool:
     return os.path.abspath(target).startswith(base_abs + os.sep)
 
 
+def classify_intake_file(relative_path: str) -> str:
+    """Choose project storage from the file type and its path/name clues."""
+    path = (relative_path or "").replace("\\", "/").casefold()
+    ext = os.path.splitext(path)[1]
+    if ext in (".dxf", ".dwg"):
+        return "drawings"
+    if ext in (".xlsx", ".xlsm", ".csv", ".txt") and any(k in path for k in
+            ("boq", "bill of quantities", "bill-of-quantities", "client pricing", "tender pricing")):
+        return "client_boq"
+    if any(k in path for k in ("schedule", "schedules", "reinforcement", "rebar", "bar bending", "bar-bending")):
+        return "schedules"
+    if any(k in path for k in ("specification", "specifications", "specs", "requirements", "scope of work")):
+        return "specifications"
+    return "references"
+
+
+@app.post("/api/projects/{pid}/intake-folder")
+def upload_project_folder(pid: str, files: list[UploadFile] = File(...)):
+    """Store an entire selected project folder in project-local categories, keeping relative paths."""
+    project = _known(pid)
+    categories = ("drawings", "schedules", "client_boq", "specifications", "references")
+    saved = {category: [] for category in categories}
+    conflicts, rejected = [], []
+    for upload in files:
+        raw_name = upload.filename or ""
+        rel = _safe_rel_path(raw_name)
+        if rel is None:
+            rejected.append({"file": raw_name, "reason": "unsafe path"})
+            continue
+        category = classify_intake_file(rel)
+        dest = project["source_folder"] if category == "drawings" else store.pdir(pid, "files", category)
+        target = os.path.abspath(os.path.join(dest, rel))
+        if not _within(dest, target) or os.path.commonpath((os.path.realpath(dest), os.path.realpath(target))) != os.path.realpath(dest):
+            rejected.append({"file": raw_name, "reason": "unsafe path"})
+            continue
+        if os.path.exists(target):
+            conflicts.append({"file": rel.replace(os.sep, "/"), "category": category})
+            continue
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "wb") as fh:
+            shutil.copyfileobj(upload.file, fh)
+        saved[category].append(rel.replace(os.sep, "/"))
+
+    from qto import live
+    for category, names in saved.items():
+        if names:
+            dest = project["source_folder"] if category == "drawings" else store.pdir(pid, "files", category)
+            live.record_uploads(pid, category, [os.path.join(dest, *name.split("/")) for name in names])
+    counts = {category: len(names) for category, names in saved.items()}
+    summary = {"received": len(files), "counts": counts, "cad_files": counts["drawings"],
+               "saved": saved, "conflicts": conflicts, "rejected": rejected}
+    store.audit(pid, "project_folder_intake", received=len(files), counts=counts,
+                cad_files=counts["drawings"], conflicts=conflicts[:100], rejected=rejected[:100])
+    return summary
+
+
+@app.post("/api/projects/{pid}/intake-folder-and-process")
+def upload_project_folder_and_process(pid: str, files: list[UploadFile] = File(...)):
+    """Sort a complete project folder, then automatically process it when CAD drawings are available."""
+    current = PROGRESS.get(pid)
+    if current and current.state["running"]:
+        raise HTTPException(409, "This project is already processing; wait for the current run to finish before uploading another folder")
+
+    result = upload_project_folder(pid, files)
+    root = store.project(pid)["source_folder"]
+    drawings, _ = list_files(root)
+    result["drawings_ready"] = len(drawings)
+    if not drawings:
+        result["processing_started"] = False
+        result["message"] = "Folder sorted, but no DXF or DWG drawings were found. Add drawings before starting processing."
+        return result
+
+    start_run(pid, {"scope": "all"})
+    result["processing_started"] = True
+    return result
+
+
 @app.post("/api/projects/{pid}/upload/{kind}")
 async def upload_files(pid: str, kind: str, files: list[UploadFile] = File(...)):
     """Upload project documents - individual files, or every file from a chosen folder (and its
@@ -123,7 +235,7 @@ async def upload_files(pid: str, kind: str, files: list[UploadFile] = File(...))
     silently overwrite each other and nothing picked in the folder dialog is dropped. Zip files are still
     extracted, keeping their own internal folder structure the same way."""
     import zipfile
-    store.project(pid)
+    _known(pid)
     if kind not in UPLOAD_KINDS:
         raise HTTPException(400, f"kind must be one of {list(UPLOAD_KINDS)}")
     dest = store.project(pid)["source_folder"] if kind == "drawings" else store.pdir(pid, "files", kind)
@@ -174,7 +286,7 @@ async def upload_files(pid: str, kind: str, files: list[UploadFile] = File(...))
 
 @app.get("/api/projects/{pid}/files")
 def list_project_files(pid: str):
-    proj = store.project(pid)
+    proj = _known(pid)
     out = {}
     for kind in UPLOAD_KINDS:
         d = proj["source_folder"] if kind == "drawings" else store.pdir(pid, "files", kind)
@@ -206,6 +318,7 @@ def start_run(pid: str, body: dict = Body(default={})):
 
 @app.get("/api/projects/{pid}/progress")
 def progress(pid: str):
+    _known(pid)
     p = PROGRESS.get(pid)
     return p.state if p else {"running": False, "stages": [], "log": []}
 
@@ -220,6 +333,7 @@ def do_recalc(pid: str):
 
 @app.get("/api/projects/{pid}/runs")
 def runs(pid: str):
+    _known(pid)
     return store.list_runs(pid)
 
 
@@ -251,6 +365,60 @@ def drawings(pid: str):
     return out
 
 
+@app.get("/api/projects/{pid}/3d-model")
+def project_3d_model(pid: str):
+    """Build a review-oriented structural 3D model from the latest takeoff run."""
+    result = _results(pid)
+    from qto.viewer3d import build_model
+    return build_model(result["results"]["elements"], result["results"]["design"])
+
+
+@app.get("/api/projects/{pid}/source-drawings")
+def source_drawings(pid: str):
+    """List uploaded DXF/DWG sources so users can preview them before running QTO."""
+    from qto.ingest.dxf_reader import drawing_id_for
+    project = _known(pid)
+    paths, _ = list_files(project["source_folder"])
+    return [{"drawing_id": drawing_id_for(os.path.relpath(path, project["source_folder"])),
+             "file": os.path.basename(path),
+             "rel_path": os.path.relpath(path, project["source_folder"]).replace(os.sep, "/"),
+             "format": os.path.splitext(path)[1][1:].upper(),
+             "size": os.path.getsize(path)} for path in paths]
+
+
+@app.get("/api/projects/{pid}/source-drawings/{did}/preview")
+def source_drawing_preview(pid: str, did: str):
+    """Render a source drawing without requiring a processing run first."""
+    from qto.ingest.dxf_reader import drawing_id_for, load_dxf, viewer_geometry
+    from qto.ingest.dwg_convert import DwgConverterMissing
+
+    project = _known(pid)
+    root = project["source_folder"]
+    paths, _ = list_files(root)
+    path = next((candidate for candidate in paths
+                 if drawing_id_for(os.path.relpath(candidate, root)) == did), None)
+    if path is None:
+        raise HTTPException(404, "Source drawing not found")
+
+    stat = os.stat(path)
+    stamp = hashlib.sha1(f"{did}:{stat.st_size}:{stat.st_mtime_ns}".encode("utf-8")).hexdigest()[:12]
+    cache_path = store.pdir(pid, "cache", "geom", f"source-{did}-{stamp}.json")
+    cached_preview = store.read_json(cache_path)
+    if cached_preview:
+        return cached_preview
+    try:
+        loaded = load_dxf(path, root)
+        preview = {"drawing_id": did, "file": os.path.basename(path),
+                   "rel_path": os.path.relpath(path, root).replace(os.sep, "/"),
+                   "meta": loaded.meta, **viewer_geometry(loaded)}
+    except DwgConverterMissing as exc:
+        raise HTTPException(422, str(exc))
+    except Exception as exc:
+        raise HTTPException(422, f"Could not preview {os.path.basename(path)}: {exc}")
+    store.write_json(cache_path, preview)
+    return preview
+
+
 @app.get("/api/projects/{pid}/drawings/{did}")
 def drawing(pid: str, did: str):
     r = _results(pid)
@@ -264,6 +432,7 @@ def drawing(pid: str, did: str):
 
 @app.get("/api/projects/{pid}/drawings/{did}/geometry")
 def geometry(pid: str, did: str):
+    _known(pid)
     path = store.pdir(pid, "cache", "geom", f"{did}.json")
     if not os.path.exists(path):
         r = _results(pid)
@@ -329,6 +498,7 @@ def comparison(pid: str):
 
 @app.get("/api/projects/{pid}/comparison/{idx}/explain")
 def explain_row(pid: str, idx: int):
+    _known(pid)
     c = service.comparison(pid)
     if not c or idx >= len(c["rows"]):
         raise HTTPException(404)
@@ -390,12 +560,14 @@ def boq_import(pid: str, body: dict = Body(...)):
 
 @app.get("/api/projects/{pid}/boq/imports")
 def boq_imports(pid: str):
+    _known(pid)
     act = (store.read_json(store.pdir(pid, "active_boq.json"), {}) or {}).get("import_id")
     return [{**b, "active": b["import_id"] == act} for b in store.boq_imports(pid)]
 
 
 @app.post("/api/projects/{pid}/boq/activate")
 def boq_activate(pid: str, body: dict = Body(...)):
+    _known(pid)
     store.write_json(store.pdir(pid, "active_boq.json"), {"import_id": body.get("import_id")})
     store.audit(pid, "boq_activated", import_id=body.get("import_id"))
     service.invalidate()
@@ -490,6 +662,9 @@ def review(pid: str):
 
 @app.post("/api/projects/{pid}/review/{item_id:path}")
 def review_decide(pid: str, item_id: str, body: dict = Body(...)):
+    _results(pid)
+    if item_id not in {item["id"] for item in service.queue(pid)}:
+        raise HTTPException(404, "Unknown review item")
     d = store.decisions(pid)
     state = body.get("state", "Open")
     if state not in ("Open", "Accepted", "Resolved", "Rejected"):
@@ -511,6 +686,7 @@ def get_settings(pid: str):
 
 @app.post("/api/projects/{pid}/settings")
 def set_settings(pid: str, body: dict = Body(...)):
+    _known(pid)
     ov = store.overrides(pid)
     before = json.loads(json.dumps(ov))
     for key in ("tolerances", "measurement", "storey_heights", "storey_heights_confirmed", "levels", "slab_thickness"):
@@ -523,7 +699,7 @@ def set_settings(pid: str, body: dict = Body(...)):
     store.save_overrides(pid, ov)
     changed = {k: {"from": before.get(k), "to": ov.get(k)} for k in ov if before.get(k) != ov.get(k)}
     store.audit(pid, "override_changed", changes=changed, reason=body.get("reason", ""))
-    rid = recalc(pid)
+    rid = recalc(pid) if store.latest_run_id(pid) else None
     service.invalidate()
     return {"run_id": rid, "changes": changed}
 
@@ -531,13 +707,14 @@ def set_settings(pid: str, body: dict = Body(...)):
 # --- audit / export / inspection / search ----------------------------------------------
 @app.get("/api/projects/{pid}/audit")
 def audit(pid: str):
+    _known(pid)
     return store.audit_log(pid)
 
 
 @app.get("/api/projects/{pid}/export/tender-pdf")
 def export_tender_pdf_route(pid: str):
     """Client-ready tender BOQ as a single PDF - same sheets/numbering as the Excel export and the in-app
-    preview, with Rate/Amount left for Static Group Estimating to fill in. Registered before the generic
+    preview, with Rate/Amount left for the estimating team to fill in. Registered before the generic
     /export/{kind} route below - FastAPI matches path routes in registration order, and {kind} would
     otherwise swallow "tender-pdf" as an unknown export kind and 404 before this handler ever runs."""
     from qto.export.pdf import export_tender_pdf
@@ -572,7 +749,7 @@ def inspection(pid: str):
 
 @app.get("/api/rates/suggestions")
 def rate_suggestions():
-    """Rate memory: the most recent real rate Static Group has entered for each BOQ item, captured only
+    """Rate memory: the most recent real rate have been entered for each BOQ item, captured only
     from priced BOQs imported back into the app. Empty until at least one priced BOQ has been imported -
     see qto/knowledge/rates.py."""
     from qto.knowledge.rates import suggestions
@@ -588,13 +765,12 @@ def cost_benchmark():
     return _cb()
 
 
-@app.get("/api/rules")
-def rules_list():
-    """Methodology rules with status, options, history and quantity impact on every processed project."""
+def _rules_payload(project_id=None):
     from qto.knowledge.rules_engine import load_rules
-    rules = load_rules()
+    rules = load_rules(project_id)
     impact = {}
-    for p in store.projects():
+    projects = [store.project(project_id)] if project_id else store.projects()
+    for p in projects:
         rid = store.latest_run_id(p["id"])
         res = store.read_json(store.run_path(p["id"], rid, "results.json")) if rid else None
         if not res or not res.get("items"):
@@ -612,7 +788,7 @@ def rules_list():
                     "unit": it["unit"], "value": it["value"], "candidates": it["candidates"], "historical": hist.get(it["item_id"]) if not it["variant"] else None})
     # options that give identical quantities on a project: explain why from the project's own data
     slab_missing = {}
-    for p in store.projects():
+    for p in projects:
         rid = store.latest_run_id(p["id"])
         res = store.read_json(store.run_path(p["id"], rid, "results.json")) if rid else None
         sl = [i for i in (res or {}).get("items") or [] if i["item_id"] == "SUP-SLAB"]
@@ -635,6 +811,18 @@ def rules_list():
     return out
 
 
+@app.get("/api/rules")
+def rules_list():
+    """Shared methodology rules and their impact across the explicit portfolio view."""
+    return _rules_payload()
+
+
+@app.get("/api/projects/{pid}/rules")
+def project_rules_list(pid: str):
+    _known(pid)
+    return _rules_payload(pid)
+
+
 @app.post("/api/rules/{rule_id}")
 def rules_update(rule_id: str, body: dict = Body(...)):
     from qto.knowledge.rule_workflow import decide
@@ -646,13 +834,39 @@ def rules_update(rule_id: str, body: dict = Body(...)):
         raise HTTPException(400, str(exc))
 
 
+@app.post("/api/projects/{pid}/rules/{rule_id}")
+def project_rule_update(pid: str, rule_id: str, body: dict = Body(...)):
+    from qto.knowledge.rule_workflow import decide
+    from qto.knowledge.rules_engine import reset_project_rule
+    try:
+        _known(pid)
+        if body.get("action") == "inherit":
+            rule = reset_project_rule(pid, rule_id)
+            rid = recalc(pid) if store.latest_run_id(pid) else None
+            service.invalidate()
+            benchmarks = {}
+            if rid and store.project(pid).get("historical_boq"):
+                from qto.knowledge.historical import benchmark_project
+                benchmarks[pid] = benchmark_project(pid)
+            return {"rule": rule, "recalculated": [pid] if rid else [], "run_id": rid, "impact": [], "benchmarks": benchmarks}
+        return decide(rule_id, body.get("action"), option=body.get("option"), note=body.get("note", ""),
+                      options=body.get("options"), description=body.get("description"), status=body.get("status"),
+                      custom_value=body.get("custom_value"), recalculate=body.get("recalculate", True), project_id=pid)
+    except KeyError as exc:
+        raise HTTPException(404, f"Unknown project or rule: {exc}")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
 @app.get("/api/projects/{pid}/reconciliations")
 def get_recon(pid: str):
+    _known(pid)
     return [r for r in (store.read_json(os.path.join(store.DATA, "knowledge", "reconciliations.json"), []) or []) if r.get("project") == pid]
 
 
 @app.post("/api/projects/{pid}/reconciliations")
 def add_recon(pid: str, body: dict = Body(...)):
+    _known(pid)
     path = os.path.join(store.DATA, "knowledge", "reconciliations.json")
     allr = store.read_json(path, []) or []
     rec = {**body, "project": pid, "user": store.user(), "at": store.now(), "id": uuid.uuid4().hex[:8]}
@@ -664,11 +878,13 @@ def add_recon(pid: str, body: dict = Body(...)):
 
 @app.get("/api/projects/{pid}/inputs")
 def get_inputs(pid: str):
+    _known(pid)
     return store.project_inputs(pid)
 
 
 @app.post("/api/projects/{pid}/inputs")
 def set_inputs(pid: str, body: dict = Body(...)):
+    _known(pid)
     before = store.project_inputs(pid)
     store.save_project_inputs(pid, body)
     store.audit(pid, "inputs_changed", before=before, after=body)
@@ -718,8 +934,9 @@ def knowledge():
 @app.get("/api/projects/{pid}/benchmark")
 def benchmark(pid: str, refresh: bool = False):
     from qto.knowledge.historical import benchmark_project
-    if not store.project(pid).get("historical_boq"):
-        return {"available": False, "reason": "No historical Static Group BOQ is configured for this project"}
+    project = _known(pid)
+    if not project.get("historical_boq"):
+        return {"available": False, "reason": "No historical reference BOQ is configured for this project"}
     b = None if refresh else store.read_json(store.pdir(pid, "benchmark.json"))
     if not b or b.get("run_id") != store.latest_run_id(pid):
         b = benchmark_project(pid)
@@ -843,7 +1060,7 @@ def ceo():
             if r["kind"] == "measured" and r["diff_pct"] is not None and abs(r["diff_pct"]) >= 20:
                 attention.append({"severity": "critical" if abs(r["diff_pct"]) >= 50 else "attention",
                                   "title": f"{r['description'][:60]}: {r['diff_pct']:+.1f} % vs historical BOQ",
-                                  "detail": f"Engine {r['engine_qty']:,.2f} vs Static Group {r['historical_qty']:,.2f} {r['unit']} - investigation required",
+                                  "detail": f"Engine {r['engine_qty']:,.2f} vs reference BOQ {r['historical_qty']:,.2f} {r['unit']} - investigation required",
                                   "project": p["name"], "pid": p["id"], "url": "#/benchmark"})
         if s["critical_review_items"]:
             attention.append({"severity": "attention", "title": f"{s['critical_review_items']} review items need an engineer decision",
@@ -865,8 +1082,9 @@ def ceo():
 @app.post("/api/projects/{pid}/archive")
 def archive_project(pid: str, body: dict = Body(...)):
     try:
+        _known(pid)
         return store.set_archived(pid, bool(body.get("archived", True)), body.get("reason", ""))
-    except KeyError:
+    except (KeyError, ValueError):
         raise HTTPException(404, f"Unknown project {pid}")
 
 
@@ -917,6 +1135,7 @@ def live_overview(pid: str):
 def live_drawing(pid: str, did: str, body: dict = Body(...)):
     from qto import live
     try:
+        _known(pid)
         return live.update_drawing(pid, did, body)
     except KeyError:
         raise HTTPException(404, "Unknown drawing")
@@ -926,6 +1145,7 @@ def live_drawing(pid: str, did: str, body: dict = Body(...)):
 def live_baseline(pid: str, body: dict = Body(...)):
     from qto import live
     try:
+        _known(pid)
         return live.create_baseline(pid, body.get("source"), body.get("label", ""), body.get("revision"), body.get("note", ""))
     except ValueError as exc:
         raise HTTPException(400, str(exc))
@@ -935,6 +1155,7 @@ def live_baseline(pid: str, body: dict = Body(...)):
 def live_compare(pid: str, bid: str):
     from qto import live
     try:
+        _known(pid)
         return live.revision_comparison(pid, bid)
     except KeyError:
         raise HTTPException(404, "Unknown baseline")
@@ -944,6 +1165,7 @@ def live_compare(pid: str, bid: str):
 def live_line(pid: str, body: dict = Body(...)):
     from qto import live
     try:
+        _results(pid)
         return live.decide_line(pid, body.get("item_id"), body.get("variant", ""), body.get("action"), body.get("estimator_quantity"),
                                 body.get("comment", ""), body.get("reason", ""))
     except KeyError as exc:

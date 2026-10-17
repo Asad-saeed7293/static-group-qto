@@ -193,13 +193,13 @@ def create_baseline(pid, source, label="", revision=None, note=""):
 # ------------------------------------------------------------------ AI proposals
 def _results(pid, run_id=None):
     rid = run_id or store.latest_run_id(pid)
-    return rid, (store.read_json(store.run_path(pid, rid, "results.json")) if rid else None) or {}
+    return rid, (store.read_project_run(pid, rid, "results.json") if rid else None) or {}
 
 
 def proposals(pid, run_id=None):
     from .knowledge.rules_engine import load_rules
     rid, res = _results(pid, run_id)
-    rules = load_rules()
+    rules = load_rules(pid)
     els = {e["uid"]: e for e in res.get("elements", [])}
     reg = {r["drawing_id"]: r for r in register(pid)} if rid else {}
     dec = latest_decisions(pid)
@@ -350,7 +350,7 @@ def metrics(pid):
     dec = {p["key"]: p["decision"] for p in props if p["decision"] and not p["decision_stale"]}
     count = lambda a: sum(1 for d in dec.values() if d["action"] == a)
     var = [abs(d["variance_pct"]) for d in dec.values() if d["action"] == "CORRECT" and d["variance_pct"] is not None]
-    rules = load_rules().values()
+    rules = load_rules(pid).values()
     hours = pilot.load(pid)["automated"].get("estimator_review_hours")
     decided = count("ACCEPT") + count("CORRECT") + count("REJECT")
     return {"total_ai_proposed_lines": len(proposed), "measurable_lines": len(props), "accepted": count("ACCEPT"), "corrected": count("CORRECT"),
@@ -360,7 +360,7 @@ def metrics(pid):
             "variance_n": len(var), "average_abs_variance_pct": round(sum(var) / len(var), 2) if var else None,
             "median_abs_variance_pct": round(statistics.median(var), 2) if var else None, "max_abs_variance_pct": round(max(var), 2) if var else None,
             "preliminary": True, "rules_validated": sum(1 for r in rules if r["status"] == "CONFIRMED"),
-            "rules_unknown": sum(1 for r in rules if r["status"] == "UNKNOWN"), "rules_total": len(list(load_rules())),
+            "rules_unknown": sum(1 for r in rules if r["status"] == "UNKNOWN"), "rules_total": len(list(load_rules(pid))),
             "estimator_review_hours": hours,
             "note": "Preliminary: computed only from estimator decisions recorded so far. Not an accuracy, saving or ROI figure."}
 
@@ -374,7 +374,7 @@ def dependencies(pid):
     inp = store.project_inputs(pid)
     bw = inp.get("boundary_wall") or {}
     pr = pilot.load(pid)
-    rules = list(load_rules().values())
+    rules = list(load_rules(pid).values())
     dep = lambda item, ok, detail: {"item": item, "ok": bool(ok), "detail": detail}
     return [
         dep("Real, unseen Static Group project", p.get("role") == "new project" and not p.get("historical_boq"),

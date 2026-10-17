@@ -1,4 +1,4 @@
-/* Static Group · Automated QTO & Project Intelligence — single page app (no build step).
+/* QTO & BOQ Automation · Automated QTO & Project Intelligence — single page app (no build step).
    UI layer only: every number shown comes from the backend API (deterministic engine, stored runs). */
 const S = { pid: localStorage.getItem("pid") || null, projects: [], cache: {}, user: "", chat: [] };
 const $ = (s, r = document) => r.querySelector(s);
@@ -149,6 +149,11 @@ async function route() {
   $$("#nav a").forEach(a => { const on = a.dataset.r === key || (name === "project" && a.dataset.r === "project/overview" && !$$("#nav a").some(x => x.dataset.r === key)) || (name === "viewer" && a.dataset.r === "project/drawings") || (name === "newproject" && a.dataset.r === "projects") || (name === "processing" && a.dataset.r === "project/overview"); a.classList.toggle("active", on); a.toggleAttribute("aria-current", on); });
   const main = $("#main"); main.innerHTML = skeleton();
   const tok = ++S.nav;
+  if (!S.pid && ["project", "processing", "viewer", "benchmark", "rules", "reports", "settings"].includes(name)) {
+    main.innerHTML = emptyState("projects", "Select a project", "Choose a project in the header or create one before opening project data.", `<a class="btn" href="#/newproject">${icon("plus")}New project</a>`);
+    main.focus({ preventScroll: true });
+    return;
+  }
   try { await (ROUTES[name] || home)(main, arg, params); }
   catch (e) {
     if (e instanceof StaleNav || tok !== S.nav) return;   // a newer navigation owns the page
@@ -164,18 +169,19 @@ async function init() {
   const [projs, me] = await Promise.all([api("/api/projects"), api("/api/me").catch(() => ({ user: "" }))]);
   S.projects = projs; S.user = me.user || "";
   $("#userName").textContent = S.user; $("#avatar").textContent = (S.user || "SG").slice(0, 2).toUpperCase(); $("#user").title = "Signed in as " + S.user;
-  if (!S.pid || !S.projects.find(p => p.id === S.pid)) S.pid = S.projects[0]?.id;
+  if (!S.pid || !S.projects.find(p => p.id === S.pid)) S.pid = null;
   const sel = $("#projectSelect");
-  sel.innerHTML = S.projects.map(p => `<option value="${p.id}">${esc(shortName(p.name))}</option>`).join("");
-  sel.value = S.pid; sel.onchange = () => selectProject(sel.value);
+  sel.innerHTML = `<option value="">Select project</option>` + S.projects.map(p => `<option value="${p.id}">${esc(shortName(p.name))}</option>`).join("");
+  sel.value = S.pid || ""; sel.onchange = () => selectProject(sel.value || null);
   setupSearch(); refreshChrome(); route();
 }
-function selectProject(pid) { S.pid = pid; localStorage.setItem("pid", pid); $("#projectSelect").value = pid; invalidate(); refreshChrome(); route(); }
+function selectProject(pid) { S.pid = pid; if (pid) localStorage.setItem("pid", pid); else localStorage.removeItem("pid"); $("#projectSelect").value = pid || ""; invalidate(); refreshChrome(); route(); }
 async function refreshChrome() {
   const p = cur();
   $("#runInfo").textContent = p?.latest_run ? `Run ${p.latest_run}` : "Not processed";
+  if (!S.pid) { $("#reviewBadge").textContent = ""; $("#rulesBadge").textContent = ""; $("#rulesBadge").classList.remove("alert"); return; }
   try { const q = await cached("review", () => api(P("/review"))); const n = q.filter(i => i.decision.state === "Open").length; $("#reviewBadge").textContent = n || ""; } catch (e) { $("#reviewBadge").textContent = ""; }
-  try { const r = await cached("rules", () => api("/api/rules")); const n = r.filter(x => x.status !== "CONFIRMED").length; $("#rulesBadge").textContent = n || ""; $("#rulesBadge").classList.toggle("alert", n > 0); } catch (e) { }
+  try { const r = await cached("rules", () => api(P("/rules"))); const n = r.filter(x => x.status !== "CONFIRMED").length; $("#rulesBadge").textContent = n || ""; $("#rulesBadge").classList.toggle("alert", n > 0); } catch (e) { }
 }
 
 /* ================= EXECUTIVE DASHBOARD ================= */
@@ -188,7 +194,7 @@ async function home(main) {
   const disp = p => { const c = {}; Object.entries(p.items_by_status || {}).forEach(([k, v]) => { const s = RAW2DS[k] || k; c[s] = (c[s] || 0) + v; }); return c; };
   const status = p => !p.processed ? ["Not processed", "b-outline"] : p.critical_review_items || p.items_needing_review ? ["In review", "b-warning"] : ["Ready", "b-success"];
   const att = d.attention || [];
-  main.innerHTML = pageHead("Static Group Project Intelligence", "Automated Quantity Takeoff, BOQ &amp; Project Intelligence", `<a class="btn sec" href="#/report">${icon("report")}Daily report</a><a class="btn" href="#/assistant">${icon("assistant")}Ask the assistant</a>`) + `
+  main.innerHTML = pageHead("QTO & BOQ Automation", "Portfolio view across all active projects: quantity takeoff, BOQ readiness and review status", `<a class="btn sec" href="#/report">${icon("report")}Daily report</a><a class="btn" href="#/assistant">${icon("assistant")}Ask the assistant</a>`) + `
   <div class="grid g5">
     ${kpi("Projects", d.projects.length, `${live.length} processed`, { href: "#/projects" })}
     ${kpi("BOQ lines", n0(sum("boq_items")), `${live.reduce((x, p) => x + (p.readiness?.final || 0), 0)} calculated / estimated · ${live.reduce((x, p) => x + (p.readiness?.lump_excluded || 0), 0)} lump sum / excluded (no measurement)`)}
@@ -241,7 +247,7 @@ async function projects(main) {
   const d = await api("/api/ceo");
   const by = Object.fromEntries(d.projects.map(p => [p.id, p]));
   const archived = await api("/api/projects-archived").catch(() => []);
-  main.innerHTML = pageHead("Projects", "Reference projects with Static Group's historical BOQs, and new projects processed from their own drawings.", `<a class="btn" href="#/newproject">${icon("plus")}New project</a>`) +
+  main.innerHTML = pageHead("Projects", "Manage drawing sets, reference BOQs and active construction projects.", `<a class="btn" href="#/newproject">${icon("plus")}New project</a>`) +
     `<div class="grid g3">${S.projects.map(p => { const s = by[p.id] || {}; const c = {}; Object.entries(s.items_by_status || {}).forEach(([k, v]) => { const x = RAW2DS[k] || k; c[x] = (c[x] || 0) + v; });
       return `<div class="card" style="display:flex;flex-direction:column;gap:12px">
         <div class="row" style="align-items:flex-start"><div style="flex:1;min-width:0"><div class="eyebrow">${p.historical_boq ? "Reference project" : esc(p.role || "Project")}</div><h3 style="margin:0;font-size:15px">${esc(shortName(p.name))}</h3><div class="small" title="${esc(p.name)}">${esc(p.name)}</div></div>
@@ -259,8 +265,8 @@ async function projects(main) {
 }
 
 /* ================= PROJECT WORKSPACE ================= */
-const PTABS = [["overview", "Overview"], ["boq", "BOQ"], ["drawings", "Drawings"], ["elements", "Elements"], ["reviews", "Reviews"], ["changes", "Changes"], ["inputs", "Inputs"], ["validation", "Validation"], ["clientboq", "Client BOQ"], ["pilot", "Pilot"], ["audit", "Audit"]];
-const PTAB_FN = { overview: projOverview, boq: sboq, drawings, elements, takeoff, reviews: review, changes, inputs, clientboq: boq, variance, validation: liveTab, pilot: pilotTab, audit: reports };
+const PTABS = [["overview", "Overview"], ["boq", "BOQ"], ["drawings", "Drawings"], ["model3d", "3D Model"], ["elements", "Elements"], ["reviews", "Reviews"], ["changes", "Changes"], ["inputs", "Inputs"], ["validation", "Validation"], ["clientboq", "Client BOQ"], ["pilot", "Pilot"], ["audit", "Audit"]];
+const PTAB_FN = { overview: projOverview, boq: sboq, drawings, model3d, elements, takeoff, reviews: review, changes, inputs, clientboq: boq, variance, validation: liveTab, pilot: pilotTab, audit: reports };
 async function project(main, tab = "overview", params = {}) {
   tab = PTAB_FN[tab] ? tab : "overview";
   const p = cur();
@@ -277,6 +283,11 @@ async function project(main, tab = "overview", params = {}) {
   if (!processed && !["inputs", "audit"].includes(tab)) { body.innerHTML = emptyState("play", "This project has not been processed yet", "Upload or point to the project's drawings, then run processing to extract elements and calculate quantities.", `<a class="btn" href="#/processing">${icon("play")}Process drawings</a> <a class="btn sec" href="#/newproject">Upload documents</a>`); return; }
   try { await PTAB_FN[tab](body, undefined, params); }
   catch (e) { body.innerHTML = String(e.message).includes("not been processed") ? emptyState("play", "Not processed yet", "Run processing first.", `<a class="btn" href="#/processing">Process drawings</a>`) : emptyState("alert", "Could not load this section", esc(e.message)); }
+}
+
+async function model3d(main) {
+  if (!window.renderStructural3D) throw new Error("3D model viewer did not load. Refresh the app and try again.");
+  return window.renderStructural3D(main, api, P, esc, icon);
 }
 
 async function projOverview(main) {
@@ -302,7 +313,7 @@ async function projOverview(main) {
   </div>`;
 }
 
-/* ================= STATIC GROUP BOQ ================= */
+/* ================= REFERENCE BOQ ================= */
 async function sboq(main) {
   const b = await cached("sboq", () => api(P("/static-boq")));
   if (!b.available) { main.innerHTML = emptyState("boq", "BOQ not available", esc(b.reason), `<a class="btn" href="#/processing">Reprocess project</a>`); return; }
@@ -311,13 +322,13 @@ async function sboq(main) {
   const lineCount = lines.filter(l => !l.is_group_header).length;
   const opts = [["", "All", lineCount], ...["Calculated", "Estimated", "Needs Review", "Missing"].map(k => [k, k, sm[k] || 0]), ["LSX", "Lump Sum / Excluded", (sm["Lump Sum"] || 0) + (sm.Excluded || 0)]];
   main.innerHTML = `<div class="card" style="margin-bottom:14px"><div class="row wrap"><div style="flex:1;min-width:280px">${stackBar(sm, DSC)}${legend(sm, DSC)}</div>
-    <div class="row"><a class="btn sec" href="#/rules">${icon("rules")}Resolve rules</a><a class="btn sec" href="#/project/inputs">${icon("inputs")}Enter inputs</a><button class="sec" id="bqpv">${icon("eye")}Preview</button><a class="btn sec" href="${P("/export/tender-pdf")}" title="Client-ready PDF — same sheets and numbering as the Excel export, Rate/Amount left for Static Group to price">${icon("doc")}Tender PDF</a><a class="btn" href="${P("/export/static-boq")}">${icon("export")}Export Excel</a></div></div></div>
-  ${(b.new_items || []).length ? `<div class="banner warn">${icon("alert")}<div><b>${b.new_items.length} new BOQ items detected</b> in the client BOQ that match no Static Group knowledge-model item. <a href="#" id="shownew">Review them</a>.</div></div>` : ""}
+    <div class="row"><a class="btn sec" href="#/rules">${icon("rules")}Resolve rules</a><a class="btn sec" href="#/project/inputs">${icon("inputs")}Enter inputs</a><button class="sec" id="bqpv">${icon("eye")}Preview</button><a class="btn sec" href="${P("/export/tender-pdf")}" title="Client-ready PDF — same sheets and numbering as the Excel export, Rate/Amount left for the estimating team to price">${icon("doc")}Tender PDF</a><a class="btn" href="${P("/export/static-boq")}">${icon("export")}Export Excel</a></div></div></div>
+  ${(b.new_items || []).length ? `<div class="banner warn">${icon("alert")}<div><b>${b.new_items.length} new BOQ items detected</b> in the client BOQ that match no BOQ catalogue item. <a href="#" id="shownew">Review them</a>.</div></div>` : ""}
   <div class="toolbar">${seg("bf", opts, "")}<span class="spacer"></span><div class="search">${icon("search")}<input id="bq" placeholder="Filter by code or description" style="width:260px" aria-label="Filter BOQ lines"></div></div>
   <div class="tablewrap" style="max-height:calc(100vh - 330px)"><table id="sbt"><thead><tr><th scope="col">Code</th><th scope="col">Description</th><th scope="col">Unit</th><th class="num" scope="col">Quantity</th><th scope="col">Status</th><th class="num" scope="col">Confidence</th><th scope="col">Source</th><th scope="col">Review</th></tr></thead><tbody></tbody></table></div>
   <div class="small" style="margin-top:10px">Calculated = rule confirmed · Estimated = inferred or assumed rule · Needs Review = rule undecided (candidates shown) or value to validate · Missing = input or drawing data absent. Select a line to see its calculation evidence.</div>`;
   const draw = () => {
-    // "code" (1, 1.1, 2 ...) matches Static Group's own numbering and resets per section, so it repeats
+    // "code" (1, 1.1, 2 ...) matches the project's own numbering and resets per section, so it repeats
     // across the BOQ by design - "key" (item_id + variant) is what's unique and used for lookups.
     const rows = lines.filter(l => l.is_group_header || ((!filt || (filt === "LSX" ? ["Lump Sum", "Excluded"].includes(l.display_status) : l.display_status === filt)) && (!q || (l.code + " " + l.description + " " + l.variant).toLowerCase().includes(q))));
     let sec = null, html = "";
@@ -336,7 +347,7 @@ async function sboq(main) {
   bindSeg("bf", v => { filt = v; draw(); });
   $("#bq").oninput = e => { q = e.target.value.toLowerCase(); draw(); };
   $("#bqpv").onclick = previewStaticBoq;
-  if ($("#shownew")) $("#shownew").onclick = e => { e.preventDefault(); openSheet(`<div class="sheet-head"><div class="eyebrow">Client BOQ</div><h2>New BOQ items detected</h2><div class="small">These lines match no item of the Static Group knowledge model. An estimator should create a model item and rule for each.</div></div>${table([{ k: "row", t: "Row" }, { k: "description", t: "Description" }, { k: "unit", t: "Unit" }, { t: "Qty", num: 1, f: x => n3(x.quantity) }], b.new_items)}`, true); };
+  if ($("#shownew")) $("#shownew").onclick = e => { e.preventDefault(); openSheet(`<div class="sheet-head"><div class="eyebrow">Client BOQ</div><h2>New BOQ items detected</h2><div class="small">These lines match no item of the BOQ knowledge model. An estimator should create a model item and rule for each.</div></div>${table([{ k: "row", t: "Row" }, { k: "description", t: "Description" }, { k: "unit", t: "Unit" }, { t: "Qty", num: 1, f: x => n3(x.quantity) }], b.new_items)}`, true); };
   draw();
 }
 async function boqLineDetail(l) {
@@ -368,7 +379,7 @@ async function boqLineDetail(l) {
 }
 
 async function previewStaticBoq() {
-  openSheet(`<div class="sheet-head"><div class="eyebrow">Preview</div><h2>BOQ preview — Static Group format</h2></div>${skeleton(1)}`);
+  openSheet(`<div class="sheet-head"><div class="eyebrow">Preview</div><h2>BOQ preview — Reference BOQ format</h2></div>${skeleton(1)}`);
   const b = await api(P("/static-boq/preview"));
   if (!b.available) { $("#drawerBody").innerHTML = emptyState("boq", "Preview not available", esc(b.reason)); return; }
   const tabs = [...b.sheet_order, "Summary"];
@@ -384,15 +395,11 @@ async function previewStaticBoq() {
       if (r.row === "section" || r.row === "subsection") return `<tr class="group"><td class="mono">${esc(r.code)}</td><td colspan="5">${esc(r.title)}</td></tr>`;
       if (r.row === "group") return `<tr class="group"><td class="mono" style="padding-left:24px">${esc(r.code)}</td><td colspan="5">${esc(r.title)}</td></tr>`;
       if (r.row === "subtotal") return `<tr class="boq-total"><td></td><td colspan="4">TOTAL CARRIED TO SUMMARY</td><td class="num">—</td></tr>`;
-      const sug = r.suggested_rate != null;
-      const rateCell = sug ? `<span style="color:#946F00;font-style:italic" title="Suggested from rate memory — ${esc(r.suggested_rate_source || "a past priced BOQ")}. Not confirmed.">${n2(r.suggested_rate)}*</span>` : "—";
-      const amtCell = sug && r.quantity != null ? `<span style="color:#946F00;font-style:italic">${n2(r.suggested_rate * r.quantity)}*</span>` : "—";
-      return `<tr><td class="mono">${esc(r.code)}</td><td>${esc(r.description)}</td><td class="num">${r.quantity != null ? n2(r.quantity) : "—"}</td><td>${esc(UNIT(r.unit))}</td><td class="num small">${rateCell}</td><td class="num small">${amtCell}</td></tr>`;
+      return `<tr><td class="mono">${esc(r.code)}</td><td>${esc(r.description)}</td><td class="num">${r.quantity != null ? n2(r.quantity) : "—"}</td><td>${esc(UNIT(r.unit))}</td><td class="num small">—</td><td class="num small">—</td></tr>`;
     }).join("");
   };
   const draw = () => {
-    const hasSug = Object.values(b.sheets).some(rows => rows.some(r => r.suggested_rate != null));
-    $("#drawerBody").innerHTML = `<div class="sheet-head"><div class="eyebrow">Preview · matches Export Excel exactly</div><h2>${esc(b.title)}</h2><div class="small">RATE and AMOUNT are blank here — Static Group prices them after export${hasSug ? ', except lines marked with <span style="color:#946F00;font-style:italic">amber italics and *</span>, which show a suggested rate from a past priced BOQ (not confirmed)' : ""}. Everything else (sheets, headings, numbering) is exactly what the download will contain.</div></div>
+    $("#drawerBody").innerHTML = `<div class="sheet-head"><div class="eyebrow">BOQ preview</div><h2>${esc(b.title)}</h2><div class="small">The downloaded workbook includes the Reference BOQ cover, Summary and BOQ sheets. Quantities come from the current run; RATE stays blank for pricing.</div></div>
     <div class="kv tight" style="margin-bottom:12px"><div>Project</div><div>${esc(b.project.name)}</div><div>Client</div><div>${esc(b.project.client || "—")}</div><div>Location</div><div>${esc(b.project.location || "—")}</div><div>Ref.No / Date</div><div>${b.boq_meta.ref ? esc(b.boq_meta.ref) : "—"}${b.boq_meta.date ? " · " + esc(b.boq_meta.date) : ""}</div></div>
     <div class="toolbar" style="margin-bottom:8px">${seg("pvtab", tabs.map(s => [s, s]), tab)}</div>
     <div class="tablewrap" style="max-height:420px"><table><thead><tr><th>ITEM</th><th>DESCRIPTION</th><th class="num">QTY</th><th>UNIT</th><th class="num">RATE</th><th class="num">AMOUNT (QR)</th></tr></thead><tbody>${rowsFor(tab)}</tbody></table></div>
@@ -452,16 +459,23 @@ const ACI = { 1: "#c62828", 2: "#a58f00", 3: "#2e7d32", 4: "#00838f", 5: "#1f4fd
 const ELC = { footing: "#1f5fa8", raft: "#138496", blinding: "#8a8f1f", column: "#c0392b", wall: "#7b4f2c", beam: "#d4780f", slab: "#2e8b57", pedestal: "#7d4fa8" };
 async function viewer(main, did, params) {
   main.innerHTML = `<div class="empty"><span class="spinner dark"></span> Loading drawing geometry — the first open of a large drawing can take a few seconds…</div>`;
-  const [info, geo, els] = await Promise.all([api(P(`/drawings/${did}`)), api(P(`/drawings/${did}/geometry`)), api(P(`/elements?drawing_id=${did}`))]);
+  let info, geo, els;
+  if (params.source === "1") {
+    geo = await api(P(`/source-drawings/${encodeURIComponent(did)}/preview`));
+    info = geo;
+    els = [];
+  } else {
+    [info, geo, els] = await Promise.all([api(P(`/drawings/${did}`)), api(P(`/drawings/${did}/geometry`)), api(P(`/elements?drawing_id=${encodeURIComponent(did)}`))]);
+  }
   setCrumb("Projects", shortName(cur().name), "Drawings", info.file);
   main.innerHTML = `<div class="page-head" style="margin-bottom:12px"><div><div class="eyebrow">Drawing viewer</div><h1 class="page-title">${esc(info.file)}</h1><div class="page-sub">${esc(info.rel_path)} · ${esc(info.meta?.units)} · ${geo.items.length.toLocaleString()} entities${geo.truncated ? " (display truncated)" : ""} · ${els.length} extracted elements</div></div>
-    <div class="row"><a class="btn sec" href="#/project/drawings">${icon("back")}All drawings</a></div></div>
+    <div class="row"><a class="btn sec" href="${params.source === "1" ? "#/newproject" : "#/project/drawings"}">${icon("back")}${params.source === "1" ? "Project files" : "All drawings"}</a></div></div>
     <div class="viewer"><div class="panel"><h4>Display</h4><label class="layer"><input type="checkbox" id="showEl" checked> Extracted elements (${els.length})</label><label class="layer"><input type="checkbox" id="showTx" checked> Text</label>
     <div class="legend" style="margin:8px 0 4px">${[...new Set(els.map(e => e.element_type))].map(t => `<span><i style="background:${ELC[t] || "#000"}"></i>${TYPES[t] || t}</span>`).join("")}</div>
     <h4 style="margin-top:14px">Layers</h4><div class="row" style="margin-bottom:6px"><button class="sec small" id="lAll">All</button><button class="sec small" id="lNone">None</button></div><div id="layers"></div></div>
     <div class="minimap"><canvas id="cv" aria-label="Drawing canvas: scroll to zoom, drag to pan, click an element to select"></canvas>
     <div class="vtools"><button id="fit" title="Fit to screen" aria-label="Fit to screen">${icon("fit")}</button><button id="zin" title="Zoom in" aria-label="Zoom in">${icon("zin")}</button><button id="zout" title="Zoom out" aria-label="Zoom out">${icon("zout")}</button></div><div class="vstatus" id="vst">Scroll to zoom · drag to pan · click an element</div></div>
-    <div class="panel" id="vinfo"><h4>Selected element</h4><p class="small">Click a highlighted element on the drawing to see its measurement, or open a drawing from a BOQ line's evidence to locate an element automatically.</p></div></div>`;
+    <div class="panel" id="vinfo"><h4>${params.source === "1" ? "Source drawing preview" : "Selected element"}</h4><p class="small">${params.source === "1" ? "This drawing has not been processed yet. Run processing to extract elements and quantities." : "Click a highlighted element on the drawing to see its measurement, or open a drawing from a BOQ line's evidence to locate an element automatically."}</p></div></div>`;
   const cv = $("#cv"), ctx = cv.getContext("2d");
   const L = geo.layers.map(l => ({ ...l, on: true }));
   const polys = els.filter(e => e.geometry && e.geometry.length > 2);
@@ -621,7 +635,7 @@ async function boq(main) {
   const act = imports.find(i => i.active);
   main.innerHTML = `<div class="grid g2"><div class="card"><h3>Element BOQ generated from drawings</h3><div class="kv tight"><div>BOQ lines</div><div>${lines.length}</div><div>Total concrete</div><div>${n3(lines.reduce((s, l) => s + (l.quantity || 0), 0))} m³</div><div>Lines with missing data</div><div>${lines.filter(l => l.count_missing).length}</div></div>
    <div class="toolbar" style="margin-top:12px;margin-bottom:0"><a class="btn sec" href="${P("/export/boq")}">${icon("export")}Export element BOQ</a><a class="btn sec" href="#/project/variance">Variance analysis ${icon("arrow")}</a></div></div>
-   <div class="card"><h3>Client / existing BOQ for comparison</h3>${act ? `<div class="banner ${act.is_test ? "test" : "info"}">${act.is_test ? "TEST BOQ (synthetic, not Static Group data): " : "Active BOQ: "}${esc(act.name)} · ${act.row_count} rows</div>` : `<div class="banner info">${icon("info")}<div>No client BOQ imported for this project.</div></div>`}
+   <div class="card"><h3>Client / existing BOQ for comparison</h3>${act ? `<div class="banner ${act.is_test ? "test" : "info"}">${act.is_test ? "TEST BOQ (synthetic, not reference data): " : "Active BOQ: "}${esc(act.name)} · ${act.row_count} rows</div>` : `<div class="banner info">${icon("info")}<div>No client BOQ imported for this project.</div></div>`}
     <div class="toolbar"><input type="file" id="bf" accept=".xlsx,.csv" aria-label="BOQ file"><button id="bu">Upload &amp; map columns</button></div>
     ${imports.length ? `<div class="small">Previous imports: ${imports.map(i => `<a href="#" data-i="${i.import_id}" class="actv">${esc(i.name)}${i.is_test ? " [TEST]" : ""}${i.active ? " (active)" : ""}</a>`).join(" · ")} · <a href="#" class="actv" data-i="">Deactivate</a></div>` : ""}
     <div id="mapper"></div></div></div>
@@ -662,7 +676,7 @@ async function variance(main) {
   const s = await api(P("/settings"));
   const tol = s.settings.tolerances.map(b => `≤ ${b.max_abs_pct}% → ${b.status}`).join(" · ") + ` · above → ${s.settings.tolerance_above_status}`;
   const banner = !c.boq ? `<div class="banner info">${icon("info")}<div>No client BOQ imported — showing drawing quantities only. Import one on the <a href="#/project/clientboq">Client BOQ</a> tab.</div></div>`
-    : c.boq.is_test ? `<div class="banner test">TEST BOQ — "${esc(c.boq.name)}" is synthetic data created to demonstrate the comparison logic. It is NOT Static Group data.</div>` : `<div class="banner info">${icon("info")}<div>Compared with BOQ: ${esc(c.boq.name)}</div></div>`;
+    : c.boq.is_test ? `<div class="banner test">TEST BOQ — "${esc(c.boq.name)}" is synthetic data created to demonstrate the comparison logic. It is NOT reference data.</div>` : `<div class="banner info">${icon("info")}<div>Compared with BOQ: ${esc(c.boq.name)}</div></div>`;
   main.innerHTML = `<div class="toolbar"><a class="btn ghost small" href="#/project/clientboq">${icon("back")}Client BOQ</a></div>${banner}<div class="grid g2"><div class="card"><h3>Status</h3>${stack(c.summary.by_status)}<div class="small" style="margin-top:8px">Tolerance bands (Settings): ${esc(tol)}<br>Variance = Drawing − BOQ; Variance % = Variance ÷ BOQ × 100 (undefined when BOQ = 0 or missing).</div></div>
   <div class="card"><h3>By category</h3><table class="plain"><thead><tr><th>Category</th><th class="num">Drawing</th><th class="num">BOQ</th><th class="num">Variance</th><th class="num">%</th></tr></thead><tbody>${Object.entries(c.summary.by_category).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="num">${n3(v.drawing)}</td><td class="num">${n3(v.boq)}</td><td class="num">${n3(v.variance)}</td><td class="num">${pct(v.variance_pct)}</td></tr>`).join("")}</tbody></table></div></div>
   <div class="toolbar" style="margin-top:16px"><select id="vs" aria-label="Status"><option value="">All statuses</option>${Object.keys(STATUS_COLORS).map(k => `<option>${k}</option>`).join("")}</select><a class="btn sec" href="${P("/export/variance")}">${icon("export")}Export variance report</a></div><div id="vt"></div>`;
@@ -798,7 +812,7 @@ async function review(main) {
     const c = RQ_CAT.find(x => x[0] === catKey);
     const rows = qOf(c[2]);
     el.innerHTML = (catKey === "variance" && bmRows.length ? `<div class="section-title" style="margin-top:0">Historical benchmark differences ≥ 20 % <span class="count">${bmRows.length}</span></div>` + table([
-      { t: "Issue", f: r => `<b>${esc(r.description)}</b><div class="small">${esc(r.sheet)} row ${r.row}</div>` }, { t: "Static Group", num: 1, f: r => n2(r.historical_qty) }, { t: "Engine", num: 1, f: r => n2(r.engine_qty) },
+      { t: "Issue", f: r => `<b>${esc(r.description)}</b><div class="small">${esc(r.sheet)} row ${r.row}</div>` }, { t: "Reference BOQ", num: 1, f: r => n2(r.historical_qty) }, { t: "Engine", num: 1, f: r => n2(r.engine_qty) },
       { t: "Variance", num: 1, f: r => `<b style="color:var(--error)">${pct(r.diff_pct)}</b>` }, { t: "Reason", f: r => `<span class="small">${esc((r.diagnosis || [])[0]?.cause || "")}</span>` }, { t: "Action", f: () => '<span class="btn sec small">Reconcile</span>' }], bmRows, { onclick: openReconcile }) + `<div class="section-title">Element-level variance flags <span class="count">${rows.length}</span></div>` : "") +
       table([{ t: "Impact", f: i => badge(i.status_impact), sv: i => i.status_impact }, { t: "Issue", f: i => `<b>${esc(i.title)}</b><div class="small mono">${esc(i.code)}</div>` },
       { t: "Element", f: i => `${esc(TYPES[i.element_type] || i.element_type || "")} <b>${esc(i.mark)}</b> ${i.count > 1 ? `<span class="chip">${i.count} elements</span>` : ""}<div class="small">${esc(i.floor)} ${esc(i.drawing)}</div>` },
@@ -835,7 +849,7 @@ async function reports(main) {
   if (!inProject) setCrumb("System", "Reports & Audit");
   const [insp, audit, runs] = await Promise.all([cached("insp", () => api(P("/inspection"))).catch(() => null), api(P("/audit")), api(P("/runs"))]);
   main.innerHTML = (inProject ? "" : pageHead("Reports &amp; Audit", `Exports and the audit trail for ${esc(shortName(cur().name))}. Every decision, input and processing run is recorded.`)) + `<div class="grid g5">
-   ${[["static-boq", "Static Group BOQ", "Company BOQ structure with status, rule status, source and confidence"], ["boq", "Element BOQ", "Element lines, formulas, CAD handles, assumptions"], ["variance", "Variance report", "Comparison against the active client BOQ"], ["review", "Review report", "Flagged items with reasons and decisions"], ["processing", "Processing summary", "Files, unsupported entities, warnings, audit log"]]
+   ${[["static-boq", "BOQ", "BOQ structure with status, rule status, source and confidence"], ["boq", "Element BOQ", "Element lines, formulas, CAD handles, assumptions"], ["variance", "Variance report", "Comparison against the active client BOQ"], ["review", "Review report", "Flagged items with reasons and decisions"], ["processing", "Processing summary", "Files, unsupported entities, warnings, audit log"]]
       .map(([k, t, d]) => `<div class="card" style="display:flex;flex-direction:column"><h3 style="margin-bottom:4px">${t}</h3><p class="small" style="flex:1;margin:0 0 12px">${d}</p><a class="btn sec small" href="${P("/export/" + k)}">${icon("export")}Download Excel</a></div>`).join("")}</div>
   <div class="grid g2" style="margin-top:16px"><div class="card"><h3>Audit trail</h3>${table([{ t: "When", f: a => `<span class="small">${fmtIso(a.at)}</span>`, sv: a => a.at }, { k: "user", t: "User" }, { k: "event", t: "Event" }, { t: "Details", f: a => `<span class="small mono">${esc(JSON.stringify(Object.fromEntries(Object.entries(a).filter(([k]) => !["at", "user", "event", "project"].includes(k))))).slice(0, 200)}</span>` }], audit)}</div>
    <div class="card"><h3>Processing runs</h3>${table([{ k: "run_id", t: "Run" }, { k: "kind", t: "Kind" }, { t: "Started", f: r => fmtIso(r.started) }, { k: "status", t: "Status" }, { t: "Elements", num: 1, f: r => r.counts?.elements }], runs)}</div></div>
@@ -853,7 +867,7 @@ async function settings(main) {
   main.innerHTML = pageHead("Settings", `Tolerances, measurement conventions and storey heights for ${esc(shortName(cur().name))}. Every change is audited and triggers a recalculation.`) + `<div class="grid g2"><div class="card"><h3>Variance tolerance bands</h3><p class="small">Applied by the comparison engine; not hard-coded.</p>
    <div id="tols">${s.settings.tolerances.map((b, i) => `<div class="toolbar">≤ <input type="number" step="0.1" data-i="${i}" value="${b.max_abs_pct}" style="width:90px" aria-label="Band ${i + 1}"> % → <b>${esc(b.status)}</b></div>`).join("")}</div>
    <div class="small">Above the last band → ${esc(s.settings.tolerance_above_status)}</div><button id="svt" style="margin-top:10px">Save tolerances</button></div>
-   <div class="card"><h3>Measurement conventions (development defaults)</h3><p class="small">Static Group's own conventions are decided on the <a href="#/rules">Rule Approval</a> page; an approved rule overrides these defaults.</p><div class="mapping"><label>Column height basis</label><select id="chb"><option value="to_slab_soffit">Top of slab to underside of slab above</option><option value="floor_to_floor">Floor to floor</option></select>
+   <div class="card"><h3>Measurement conventions (development defaults)</h3><p class="small">Project measurement conventions are decided on the <a href="#/rules">Rule Approval</a> page; an approved rule overrides these defaults.</p><div class="mapping"><label>Column height basis</label><select id="chb"><option value="to_slab_soffit">Top of slab to underside of slab above</option><option value="floor_to_floor">Floor to floor</option></select>
    <label>Beam depth basis</label><select id="bdb"><option value="below_slab">Below slab (slab thickness deducted)</option><option value="full_depth">Full depth</option></select></div><button id="svm" style="margin-top:10px">Save &amp; recalculate</button></div></div>
   <div class="card" style="margin-top:16px"><h3>Storey heights (columns and walls)</h3><p class="small">Derived from level tags in the drawings. Nothing is assumed silently: confirm each value or enter a corrected one.</p>
    <div class="tablewrap" style="max-height:none"><table><thead><tr><th>Floor</th><th>Base level</th><th>Top level</th><th>Slab at top</th><th>Derived height</th><th>Derivation</th><th>Override (m)</th><th>Confirmed</th></tr></thead><tbody>
@@ -882,7 +896,7 @@ async function costs(main) {
   setCrumb("Methodology", "Cost Benchmarking");
   const rows = await api("/api/costs/benchmark");
   const anyPriced = rows.some(r => r.priced_lines > 0);
-  main.innerHTML = pageHead("Cost benchmarking", "Built only from rate memory (real rates Static Group has entered into priced BOQs, re-imported back into the app) — never estimated or looked up externally. A project's \"indicative total\" is a partial sum: only the BOQ lines that have both a calculated quantity and a known rate are included, so it is exactly as complete as its coverage % says and nothing more.");
+  main.innerHTML = pageHead("Cost benchmarking", "Built only from rate memory (real rates imported from previously priced BOQs) — never estimated or looked up externally. A project's \"indicative total\" is a partial sum: only the BOQ lines that have both a calculated quantity and a known rate are included, so it is exactly as complete as its coverage % says and nothing more.");
   if (!anyPriced) {
     main.innerHTML += emptyState("bench", "No rate history yet", "Import a priced BOQ (with a Rate column mapped) on any project's Client BOQ tab to start building rate memory. Once at least one item has a known rate, this page will show indicative cost and QR/m² per project.");
     return;
@@ -901,14 +915,14 @@ async function costs(main) {
 async function benchmark(main, arg, params) {
   setCrumb("Methodology", "Benchmarks");
   const refs = S.projects.filter(p => p.historical_boq);
-  if (!refs.length) { main.innerHTML = emptyState("bench", "No reference project", "Benchmarks need a project with Static Group's historical BOQ."); return; }
+  if (!refs.length) { main.innerHTML = emptyState("bench", "No reference project", "Benchmarks need a project with historical reference BOQ."); return; }
   const bp = params.p && refs.find(p => p.id === params.p) ? params.p : (cur().historical_boq ? S.pid : refs[0].id);
   const b = await api(`/api/projects/${bp}/benchmark`);
   if (!b.available) { main.innerHTML = pageHead("Historical benchmark") + emptyState("bench", "No benchmark available", esc(b.reason)); return; }
   const s = b.summary, rows = b.rows.filter(r => r.kind === "measured"), st = s.by_status;
   const good = (st["Exact Match"] || 0) + (st["Within Tolerance"] || 0);
   const inv = rows.filter(r => bmLabel(r)[0] === "Investigation required").length;
-  main.innerHTML = pageHead("Historical benchmark", `Engine quantities compared line by line with Static Group's own BOQ <b>${esc(b.boq_meta.ref)}</b> (${esc((b.boq_meta.date || "").slice(0, 10))}). Historical quantities validate the methodology only — they are never copied into new projects. Large variances are shown, not tuned away.`,
+  main.innerHTML = pageHead("Historical benchmark", `Engine quantities compared line by line with historical reference BOQ <b>${esc(b.boq_meta.ref)}</b> (${esc((b.boq_meta.date || "").slice(0, 10))}). Historical quantities validate the methodology only — they are never copied into new projects. Large variances are shown, not tuned away.`,
     seg("bpj", refs.map(p => [p.id, shortName(p.name)]), bp), "Reference project") + `
   <div class="grid g5">${kpi("Measured BOQ lines", s.measured_lines, `${s.boq_lines} lines in the BOQ`)}${kpi("Good match", good, "exact or within 5 %", { cls: "accent-success" })}${kpi("Investigation required", inv, "difference of 20 % or more", { cls: inv ? "accent-error" : "" })}${kpi("Candidates only", st["Candidates Only"] || 0, "methodology rule undecided")}${kpi("Not automated", st["Unable to Calculate"] || 0, "no calculator / data yet")}</div>
   <div class="toolbar" style="margin-top:20px"><select id="bc" aria-label="Category"><option value="">All categories</option>${[...new Set(rows.map(r => r.category))].map(c => `<option>${esc(c)}</option>`).join("")}</select>
@@ -933,16 +947,16 @@ async function openReconcile(r) {
   const els = r.element_uids && r.element_uids.length ? (await cached("elements", () => api(P("/elements"))).catch(() => [])).filter(e => r.element_uids.includes(e.uid)) : [];
   const [lbl, cls] = bmLabel(r);
   $("#drawerBody").innerHTML = `<div class="sheet-head"><div class="eyebrow">Reconciliation · ${esc(r.sheet)} row ${r.row} · item ${esc(r.item)}</div><h2>${esc(r.description)}</h2><div class="row" style="margin-top:8px"><span class="badge ${cls}">${lbl}</span><span class="mono small">${esc(r.item_id || "")} ${esc(r.variant || "")}</span></div></div>
-   <div class="grid g3">${kpi("Static Group BOQ", n2(r.historical_qty), esc(UNIT(r.unit)))}${kpi("Engine", n2(r.engine_qty), esc(r.engine_status || ""))}${kpi("Variance", r.diff == null ? "—" : n2(r.diff), pct(r.diff_pct))}</div>
+   <div class="grid g3">${kpi("Reference BOQ", n2(r.historical_qty), esc(UNIT(r.unit)))}${kpi("Engine", n2(r.engine_qty), esc(r.engine_status || ""))}${kpi("Variance", r.diff == null ? "—" : n2(r.diff), pct(r.diff_pct))}</div>
    <div class="card" style="margin-top:14px"><h3>Why is this line different? <span class="small">— causes supported by data, not conclusions</span></h3>${(r.diagnosis || []).map(d => `<div class="flag info"><b>${esc(d.cause)}</b><div class="small">${esc(d.evidence)}</div></div>`).join("") || "<p class='small'>No difference to diagnose.</p>"}</div>
    ${Object.keys(r.candidates || {}).length ? `<div class="card" style="margin-top:14px"><h3>Candidate quantities per methodology option</h3><table class="plain"><thead><tr><th>Option</th><th class="num">Quantity</th><th class="num">vs BOQ</th></tr></thead><tbody>${Object.entries(r.candidates).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="num">${n2(v)}</td><td class="num">${r.historical_qty && v != null ? pct((v - r.historical_qty) / r.historical_qty * 100) : "—"}</td></tr>`).join("")}</tbody></table></div>` : ""}
    <div class="card" style="margin-top:14px"><h3>Rules used</h3>${(r.rules || []).map(x => `<div style="margin:4px 0">${ruleBadge(x.status)} <b>${esc(x.title)}</b> <span class="small">· ${x.selected ? "option " + esc(x.selected) : "no option approved"}</span></div>`).join("") || "<span class='small'>None</span>"}
      <div class="small" style="margin-top:8px">Formula: <span class="mono">${esc(r.formula || "")}</span></div><div class="small">Evidence: ${esc(r.engine_detail || "")}</div>
      ${(r.missing || []).length ? `<div class="small" style="color:var(--error)">Missing: ${esc(r.missing.join("; "))}</div>` : ""}<div style="margin-top:10px"><a class="btn sec small" href="#/rules" onclick="closeDrawer()">${icon("rules")}Open rule approval</a></div></div>
    ${els.length ? `<div class="card" style="margin-top:14px"><h3>Elements measured by the engine (${els.length})</h3><div class="tablewrap" style="max-height:260px"><table><thead><tr><th>Element</th><th>Floor</th><th>Dimensions</th><th class="num">Qty</th></tr></thead><tbody>${els.map(e => `<tr class="click" data-u="${esc(e.uid)}"><td><b>${esc(e.mark || "—")}</b> <span class="small mono">${esc(e.uid)}</span></td><td>${esc(e.floor)}</td><td class="small">${dimsShort(e)}</td><td class="num">${n3(e.quantity)}</td></tr>`).join("")}</tbody></table></div></div>` : ""}
-   <div class="card" style="margin-top:14px"><h3>Engineer reconciliation</h3><p class="small">Record what explains this difference. Notes are stored as Static Group knowledge (with user and date) and can become a methodology rule — they do not change quantities by themselves.</p>
-     <div class="toolbar"><select id="rcat" aria-label="Category"><option>Unknown Static Group convention</option><option>Elements missing in engine</option><option>Extra elements in engine</option><option>Drawing / schedule error</option><option>Historical BOQ error / allowance</option><option>Other</option></select>
-     <input id="rrule" placeholder="Related rule id (optional)" style="width:220px"></div><textarea id="rtxt" rows="3" style="width:100%" placeholder="What did Static Group include or measure differently?"></textarea>
+   <div class="card" style="margin-top:14px"><h3>Engineer reconciliation</h3><p class="small">Record what explains this difference. Notes are stored as project methodology evidence (with user and date) and can become a methodology rule — they do not change quantities by themselves.</p>
+     <div class="toolbar"><select id="rcat" aria-label="Category"><option>Unknown measurement convention</option><option>Elements missing in engine</option><option>Extra elements in engine</option><option>Drawing / schedule error</option><option>Historical BOQ error / allowance</option><option>Other</option></select>
+     <input id="rrule" placeholder="Related rule id (optional)" style="width:220px"></div><textarea id="rtxt" rows="3" style="width:100%" placeholder="What was included or measured differently in the reference BOQ?"></textarea>
      <div class="toolbar" style="margin-top:10px"><button id="rsave">Save reconciliation note</button></div>
      ${mine.map(x => `<div class="small">${fmtIso(x.at)} ${esc(x.user)} — <b>${esc(x.category)}</b>${x.rule_id ? " (" + esc(x.rule_id) + ")" : ""}: ${esc(x.text)}</div>`).join("")}</div>`;
   $$("#drawerBody tr[data-u]").forEach(tr => tr.onclick = () => openEvidence(tr.dataset.u, () => openReconcile(r)));
@@ -960,8 +974,8 @@ async function knowledge(main, arg, params) {
   setCrumb("Methodology", "Knowledge");
   const [m, rs] = await Promise.all([cached("knowledge", () => api("/api/knowledge")), cached("rules", () => api("/api/rules"))]);
   let tab = params.t || "methodology";
-  main.innerHTML = pageHead("Static Group knowledge base", "How Static Group measures and structures its BOQs — methodology rules, the canonical BOQ item catalogue and the reference projects they were derived from. Quantities are never stored here.") +
-    `<nav class="tabs">${[["methodology", "Static Group Methodology", rs.length], ["catalog", "BOQ Item Catalogue", m.items.length], ["refs", "Reference Projects", S.projects.filter(p => p.historical_boq).length]].map(([k, l, n]) => `<a href="#/knowledge?t=${k}" class="${k === tab ? "on" : ""}">${l}<span class="n">${n}</span></a>`).join("")}</nav><div id="kb"></div>`;
+  main.innerHTML = pageHead("BOQ knowledge base", "How the project measures and structures its BOQs — methodology rules, the canonical BOQ item catalogue and the reference projects they were derived from. Quantities are never stored here.") +
+    `<nav class="tabs">${[["methodology", "Project Methodology", rs.length], ["catalog", "BOQ Item Catalogue", m.items.length], ["refs", "Reference Projects", S.projects.filter(p => p.historical_boq).length]].map(([k, l, n]) => `<a href="#/knowledge?t=${k}" class="${k === tab ? "on" : ""}">${l}<span class="n">${n}</span></a>`).join("")}</nav><div id="kb"></div>`;
   const kb = $("#kb");
   if (tab === "methodology") {
     const cats = ["Structural", "Architectural", "Earthworks", "Waterproofing", "BOQ & Services", "Project Inputs"];
@@ -980,7 +994,7 @@ async function knowledge(main, arg, params) {
   } else {
     const refs = S.projects.filter(p => p.historical_boq);
     const bms = await Promise.all(refs.map(p => api(`/api/projects/${p.id}/benchmark`).catch(() => ({ available: false }))));
-    kb.innerHTML = `<div class="sub">Reference projects are past Static Group projects with both drawings and a priced BOQ. They provide the historical evidence behind the methodology rules; their quantities are never reused.</div><div class="grid g2">${refs.map((p, i) => { const b = bms[i];
+    kb.innerHTML = `<div class="sub">Reference projects are past reference projects with both drawings and a priced BOQ. They provide the historical evidence behind the methodology rules; their quantities are never reused.</div><div class="grid g2">${refs.map((p, i) => { const b = bms[i];
       return `<div class="card"><div class="eyebrow">Reference project</div><h3 style="font-size:15px;margin-bottom:10px">${esc(p.name)}</h3><div class="kv tight small"><div>Historical BOQ</div><div>${b.available ? esc(b.boq_meta.ref) + " · " + esc((b.boq_meta.date || "").slice(0, 10)) : "—"}</div><div>Drawings</div><div>${p.counts ? n0(p.counts.drawings) : "—"}</div>
         <div>BOQ lines</div><div>${b.available ? `${b.summary.boq_lines} (${b.summary.measured_lines} measured)` : "—"}</div></div>${b.available ? `<div style="margin-top:12px">${legend(Object.fromEntries(Object.entries(b.summary.by_status).map(([k, v]) => [BMS[k]?.[0] || k, v])), { "Exact match": "#1d7048", "Good match": "#5c9c7a", "Difference": "#c98a1a", "Candidates only": "#2b5a8a", "Not automated": "#9aa1a9" })}</div>` : ""}
         <div style="margin-top:12px"><a class="btn sec small" href="#/benchmark?p=${p.id}">${icon("bench")}Open benchmark</a></div></div>`; }).join("")}</div>`;
@@ -990,7 +1004,8 @@ async function knowledge(main, arg, params) {
 /* ================= RULE APPROVAL ================= */
 async function rules(main, arg, params) {
   setCrumb("Methodology", "Rule Approval");
-  const rs = await api("/api/rules");
+  if (!S.pid) { main.innerHTML = emptyState("projects", "Select a project", "Rule approvals are scoped to the active project.", `<a class="btn" href="#/projects">Choose project</a>`); return; }
+  const rs = await api(P("/rules"));
   S.cache.rules = Promise.resolve(rs);
   rs.forEach(r => { r._nItems = new Set(r.impact.map(m => m.item_id + m.variant)).size; r._nProj = new Set(r.impact.map(m => m.project)).size; });
   rs.sort((a, b) => { const au = a.status === "UNKNOWN" ? 0 : 1, bu = b.status === "UNKNOWN" ? 0 : 1; return au !== bu ? au - bu : b._nItems - a._nItems; });
@@ -1001,9 +1016,9 @@ async function rules(main, arg, params) {
   const reviewedEver = rs.filter(r => (r.notes || []).length || (r.history || []).length).length;
   const cnt = {}; rs.forEach(r => cnt[r.status] = (cnt[r.status] || 0) + 1);
   let f = params.r ? "" : "";
-  main.innerHTML = pageHead("Methodology rule approval", "Each card is one Static Group measurement decision. Unknown rules never choose a value — the engine shows what every option would produce on each project. Approving an option makes it the versioned Static Group method and recalculates every project and benchmark.") +
+  main.innerHTML = pageHead(`Methodology rule approval � ${esc(cur().name)}`, "Each card is one project measurement decision. Unknown rules never choose a value — the engine shows what every option would produce on each project. Approving an option makes it the versioned approved project method and recalculates this project only.") +
     (topUnknown ? `<div class="banner info" style="margin-bottom:14px">${icon("alert")}<div><b>Biggest win available:</b> resolving “${esc(topUnknown.title)}” would settle ${topUnknown._nItems} open BOQ line${topUnknown._nItems === 1 ? "" : "s"} across ${topUnknown._nProj} project${topUnknown._nProj === 1 ? "" : "s"} — more than any other undecided rule. <a href="#rule-${esc(topUnknown.rule_id)}">Jump to it</a>. <span class="small">(Rules below are sorted by impact, undecided first — this is a priority hint only; nothing is approved automatically.)</span></div></div>` : "") +
-    `<div class="grid g5" style="margin-bottom:14px">${kpi("Confirmed", cnt.CONFIRMED || 0, "approved by an estimator", { cls: cnt.CONFIRMED ? "accent-success" : "" })}${kpi("Inferred", cnt.INFERRED || 0, "from reference projects — not confirmed")}${kpi("Assumed", cnt.ASSUMED || 0, "temporary development assumption")}${kpi("Unknown", cnt.UNKNOWN || 0, "undecided — candidates only", { cls: "accent-warning" })}${kpi("Reviewed / remaining", `${reviewedEver} / ${rs.length - (cnt.CONFIRMED || 0)}`, "reviewed = has an estimator note or decision; remaining = not confirmed")}</div><div class="card" style="margin-bottom:14px" id="vsess">${sess ? `<div class="row wrap"><span class="badge b-dark plain">Validation session open</span><b>${esc(sess.estimator)}</b><span class="small">since ${fmtIso(sess.started)} · ${esc(sess.scope)}</span><span class="spacer"></span><span class="small">This session: ${sess.summary.reviewed.length} reviewed · ${sess.summary.confirmed.length} confirmed · ${sess.summary.rejected.length} rejected · ${sess.summary.kept_unconfirmed.length} kept unconfirmed · ${sess.summary.line_decisions || 0} BOQ line decisions · ${sess.summary.boq_lines_changed} BOQ lines changed by rules</span><button class="ghost small" id="vcancel" title="Close the session as cancelled (decisions already made stay recorded)">Cancel session</button><button class="sec small" id="vfinish">Finish session</button></div>` : `<div class="row wrap"><div style="flex:1;min-width:260px"><b>Estimator validation session</b><div class="small">Start a session before reviewing so every decision, note, recalculation and benchmark change is traced to the estimator and the session. The system never decides a rule.</div></div><input id="vest" value="${esc(S.user)}" aria-label="Estimator name" style="width:180px"><input id="vscope" value="All reference projects" aria-label="Scope" style="width:200px"><button id="vstart">Start validation session</button></div>`}${sessList.filter(x => x.finished).length ? `<details style="margin-top:10px"><summary>Completed sessions (${sessList.filter(x => x.finished).length})</summary>${sessList.filter(x => x.finished).map(x => `<div class="small" style="margin-top:6px"><span class="badge ${x.outcome === "cancelled" ? "b-neutral" : "b-success"} plain">${esc(x.outcome || "completed")}</span> <b>${esc(x.estimator)}</b> · ${fmtIso(x.started)} → ${fmtIso(x.finished)} · ${x.summary.line_decisions || 0} BOQ line decision(s) · reviewed ${x.summary.reviewed.length}, confirmed ${x.summary.confirmed.length} (${esc(x.summary.confirmed.join(", ") || "none")}), rejected ${x.summary.rejected.length}, kept unconfirmed ${x.summary.kept_unconfirmed.length}, unresolved ${x.summary.unresolved.length} · projects recalculated: ${esc(x.summary.recalculations.join(", ") || "none")} · ${x.summary.boq_lines_changed} BOQ lines changed${x.finish_note ? " · " + esc(x.finish_note) : ""}</div>`).join("")}</details>` : ""}</div><div class="toolbar">${seg("rf", [["", "All", rs.length], ...(sess ? [["__remaining", "Remaining in session", rs.filter(r => r.status !== "CONFIRMED" && !inSess.has(r.rule_id)).length]] : []), ...["UNKNOWN", "ASSUMED", "INFERRED", "CONFIRMED"].map(s => [s, s[0] + s.slice(1).toLowerCase(), cnt[s] || 0])], f)}</div><div id="rl"></div>`;
+    `<div class="grid g5" style="margin-bottom:14px">${kpi("Confirmed", cnt.CONFIRMED || 0, "approved by an estimator", { cls: cnt.CONFIRMED ? "accent-success" : "" })}${kpi("Inferred", cnt.INFERRED || 0, "from reference projects — not confirmed")}${kpi("Assumed", cnt.ASSUMED || 0, "temporary development assumption")}${kpi("Unknown", cnt.UNKNOWN || 0, "undecided — candidates only", { cls: "accent-warning" })}${kpi("Reviewed / remaining", `${reviewedEver} / ${rs.length - (cnt.CONFIRMED || 0)}`, "reviewed = has an estimator note or decision; remaining = not confirmed")}</div><div class="card" style="margin-bottom:14px" id="vsess">${sess ? `<div class="row wrap"><span class="badge b-dark plain">Validation session open</span><b>${esc(sess.estimator)}</b><span class="small">since ${fmtIso(sess.started)} · ${esc(sess.scope)}</span><span class="spacer"></span><span class="small">This session: ${sess.summary.reviewed.length} reviewed · ${sess.summary.confirmed.length} confirmed · ${sess.summary.rejected.length} rejected · ${sess.summary.kept_unconfirmed.length} kept unconfirmed · ${sess.summary.line_decisions || 0} BOQ line decisions · ${sess.summary.boq_lines_changed} BOQ lines changed by rules</span><button class="ghost small" id="vcancel" title="Close the session as cancelled (decisions already made stay recorded)">Cancel session</button><button class="sec small" id="vfinish">Finish session</button></div>` : `<div class="row wrap"><div style="flex:1;min-width:260px"><b>Estimator validation session</b><div class="small">Start a session before reviewing so every decision, note, recalculation and benchmark change is traced to the estimator and the session. The system never decides a rule.</div></div><input id="vest" value="${esc(S.user)}" aria-label="Estimator name" style="width:180px"><input id="vscope" value="${esc(cur().name)}" aria-label="Scope" style="width:200px"><button id="vstart">Start validation session</button></div>`}${sessList.filter(x => x.finished).length ? `<details style="margin-top:10px"><summary>Completed sessions (${sessList.filter(x => x.finished).length})</summary>${sessList.filter(x => x.finished).map(x => `<div class="small" style="margin-top:6px"><span class="badge ${x.outcome === "cancelled" ? "b-neutral" : "b-success"} plain">${esc(x.outcome || "completed")}</span> <b>${esc(x.estimator)}</b> · ${fmtIso(x.started)} → ${fmtIso(x.finished)} · ${x.summary.line_decisions || 0} BOQ line decision(s) · reviewed ${x.summary.reviewed.length}, confirmed ${x.summary.confirmed.length} (${esc(x.summary.confirmed.join(", ") || "none")}), rejected ${x.summary.rejected.length}, kept unconfirmed ${x.summary.kept_unconfirmed.length}, unresolved ${x.summary.unresolved.length} · projects recalculated: ${esc(x.summary.recalculations.join(", ") || "none")} · ${x.summary.boq_lines_changed} BOQ lines changed${x.finish_note ? " · " + esc(x.finish_note) : ""}</div>`).join("")}</details>` : ""}</div><div class="toolbar">${seg("rf", [["", "All", rs.length], ...(sess ? [["__remaining", "Remaining in session", rs.filter(r => r.status !== "CONFIRMED" && !inSess.has(r.rule_id)).length]] : []), ...["UNKNOWN", "ASSUMED", "INFERRED", "CONFIRMED"].map(s => [s, s[0] + s.slice(1).toLowerCase(), cnt[s] || 0])], f)}</div><div id="rl"></div>`;
   const projNames = [...new Set(rs.flatMap(r => r.impact.map(m => m.project_name)))];
   const impactFor = (r, o) => projNames.map(pn => { const ms = r.impact.filter(m => m.project_name === pn); let tot = 0, any = false, hist = 0, hasH = false, unit = "";
     ms.forEach(m => { Object.entries(m.candidates || {}).forEach(([k, v]) => { if (k.includes(o) && v != null) { tot += v; any = true; } }); if (m.selected === o) { } if (m.historical != null) { hist += m.historical; hasH = true; } unit = m.unit; });
@@ -1015,15 +1030,15 @@ async function rules(main, arg, params) {
       return `<article class="rule-card" id="rule-${esc(r.rule_id)}"><div class="rc-head"><span class="rule-no">Rule ${String(idx + 1).padStart(2, "0")}</span><div style="flex:1;min-width:0"><h3>${esc(r.title)} <span class="mono small" style="font-weight:400">${esc(r.rule_id)}</span>${inSess.has(r.rule_id) ? ' <span class="badge b-outline plain">Reviewed in this session</span>' : ""}</h3><div class="q">${esc(r.description)}</div></div>
         <div style="text-align:right">${ruleBadge(r.status)}<div class="small" style="margin-top:4px">${{ CONFIRMED: "Confirmed by estimator", INFERRED: "Inferred from historical evidence", ASSUMED: "Assumed temporarily", UNKNOWN: "Undecided" }[r.status]}</div><div class="small">v${r.version}${r.approved_by ? ` · approved by ${esc(r.approved_by)}` : ""}</div></div></div>
         <div class="rc-grid"><div><div class="rc-label">Historical evidence</div><p style="margin:0 0 14px">${esc(r.evidence || "No historical evidence recorded.")}</p>
-          <div class="rc-label">Why this matters</div><p style="margin:0 0 14px" class="small">Drives ${nItems} BOQ line${nItems === 1 ? "" : "s"} on ${nProj} project${nProj === 1 ? "" : "s"}: ${(r.items || []).map(x => `<span class="chip">${esc(x)}</span>`).join("")}. ${r.status === "UNKNOWN" ? "Until an option is approved these lines show candidate quantities only." : r.status === "CONFIRMED" ? "Approved — lines using it can be Calculated." : "Until confirmed, lines using it can be at most Estimated (they show Needs Review while other issues remain)."}</p>
-          ${r.status !== "CONFIRMED" ? `<div class="rc-label">If it stays unconfirmed</div><p style="margin:0 0 14px" class="small">${r.status === "UNKNOWN" ? `No option is applied: ${nItems} line${nItems === 1 ? " keeps" : "s keep"} candidate quantities and ${nItems === 1 ? "stays" : "stay"} Needs Review (or Missing). No value is chosen for them.` : `Option <b>${esc(r.selected || "—")}</b> keeps being applied, but lines using it can never be Calculated — at best Estimated.`}</p>` : ""}<div class="rc-label">Current methodology</div><div>${r.selected ? `<b>${esc(r.selected)}</b> <span class="small">— ${esc(r.options[r.selected] || "")}</span>` : '<span style="color:var(--error);font-weight:550">No option selected</span>'}</div>
+          <div class="rc-label">Why this matters</div><p style="margin:0 0 14px" class="small">Drives ${nItems} BOQ line${nItems === 1 ? "" : "s"} in ${esc(cur().name)}: ${(r.items || []).map(x => `<span class="chip">${esc(x)}</span>`).join("")}. ${r.status === "UNKNOWN" ? "Until an option is approved these lines show candidate quantities only." : r.status === "CONFIRMED" ? "Approved — lines using it can be Calculated." : "Until confirmed, lines using it can be at most Estimated (they show Needs Review while other issues remain)."}</p>
+          ${r.status !== "CONFIRMED" ? `<div class="rc-label">If it stays unconfirmed</div><p style="margin:0 0 14px" class="small">${r.status === "UNKNOWN" ? `No option is applied: ${nItems} line${nItems === 1 ? " keeps" : "s keep"} candidate quantities and ${nItems === 1 ? "stays" : "stay"} Needs Review (or Missing). No value is chosen for them.` : `Option <b>${esc(r.selected || "—")}</b> keeps being applied, but lines using it can never be Calculated — at best Estimated.`}</p>` : ""}<div class="rc-label">Current methodology</div><div><span class="badge b-outline plain">${esc(r.source || "Shared default")}</span> ${r.selected ? `<b>${esc(r.selected)}</b> <span class="small">— ${esc(r.options[r.selected] || "")}</span>` : '<span style="color:var(--error);font-weight:550">No option selected</span>'}</div>
           ${(r.notes || []).length ? `<div class="rc-label" style="margin-top:14px">Notes</div>${r.notes.map(n => `<div class="small">${fmtIso(n.at)} · ${esc(n.user)}: ${esc(n.text)}</div>`).join("")}` : ""}
           ${(r.history || []).length ? `<details style="margin-top:10px"><summary>Version history (${r.history.length})</summary><div class="small">${r.history.map(h => `v${h.version} · ${fmtIso(h.at)} · ${esc(h.user)} · ${esc(h.action)}: ${esc(h.before.selected ?? "none")} → ${esc(h.after.selected ?? "none")} [${esc(h.before.status)} → ${esc(h.after.status)}] ${esc(h.note || "")}`).join("<br>")}</div></details>` : ""}</div>
         <div><div class="rc-label">Options &amp; impact on BOQ</div>${Object.entries(r.options).map(([o, d]) => `<label class="opt ${r.selected === o ? "on" : ""}"><input type="radio" name="opt-${esc(r.rule_id)}" value="${esc(o)}" ${r.selected === o ? "checked" : ""}><div><b class="mono" style="font-size:12.5px">${esc(o)}</b>${r.selected === o ? ' <span class="badge b-dark plain on-tag">Current</span>' : ""}<div class="small" style="color:var(--text-secondary)">${esc(d)}</div></div><div class="impact">${impactFor(r, o)}</div></label>`).join("")}
           ${(r.identical_options || []).map(t => `<div class="flag info small" style="margin-top:4px"><b>${esc(shortName(t.project_name))} · ${esc(t.item_id)}:</b> all options currently give ${n2(t.value)} because ${esc(t.reason)}.</div>`).join("")}</div></div>
         <div class="rc-foot"><input placeholder="Note or reason — recorded with the decision" data-note="${esc(r.rule_id)}" aria-label="Decision note">
-          <button data-approve="${esc(r.rule_id)}" title="Make the selected option the CONFIRMED Static Group method and recalculate">${icon("check")}Approve rule</button>
-          ${r.status !== "CONFIRMED" ? `<button class="sec" data-keep="${esc(r.rule_id)}" title="Records a review note only. The rule stays ${r.status} and no quantity changes.">Keep unconfirmed</button>` : ""}
+          <button data-approve="${esc(r.rule_id)}" title="Make the selected option confirmed for this project and recalculate">${icon("check")}Approve rule</button>
+          ${r.source === "Project override" ? `<button class="ghost" data-inherit="${esc(r.rule_id)}">Use shared rule</button>` : ""}${r.status !== "CONFIRMED" ? `<button class="sec" data-keep="${esc(r.rule_id)}" title="Records a review note only. The rule stays ${r.status} and no quantity changes.">Keep unconfirmed</button>` : ""}
           <button class="sec" data-act="note" data-rid="${esc(r.rule_id)}">${icon("note")}Add note</button>
           <button class="danger" data-act="reject" data-rid="${esc(r.rule_id)}" ${r.status === "UNKNOWN" ? "disabled title='Already undecided'" : "title='Return the rule to UNKNOWN: its lines show candidates only'"}>${r.status === "CONFIRMED" ? "Reopen (set UNKNOWN)" : "Reject"}</button>
           <a class="btn ghost" href="#/benchmark">${icon("bench")}View evidence</a>
@@ -1031,10 +1046,12 @@ async function rules(main, arg, params) {
     $$(".opt input").forEach(i => i.onchange = () => { const card = i.closest(".rule-card"); $$(".opt", card).forEach(o => o.classList.toggle("on", o.contains(i))); });
     const note = rid => $(`[data-note="${rid}"]`).value;
     const act = async (rid, body, msg, btn) => { btn.disabled = true; btn.innerHTML = `<span class="spinner${btn.classList.contains("sec") || btn.classList.contains("danger") ? " dark" : ""}"></span> Saving…`;
-      try { const r = await api(`/api/rules/${rid}`, { method: "POST", body }); invalidate(); toast(`${msg}${r.recalculated?.length ? ` — recalculated ${r.recalculated.map(x => shortName((S.projects.find(p => p.id === x) || {}).name || x)).join(", ")}; ${(r.impact || []).filter(x => x.old_value !== x.new_value || x.old_status !== x.new_status).length} BOQ line(s) changed; ${Object.keys(r.benchmarks || {}).length} benchmark(s) refreshed` : ""}${r.session_id ? " · recorded in session " + r.session_id : ""}`, 9000); refreshChrome(); route(); } catch (e) { toast(e.message, 6000, "error"); route(); } };
+      try { const r = await api(`/api/projects/${S.pid}/rules/${rid}`, { method: "POST", body }); invalidate(); toast(`${msg}${r.recalculated?.length ? ` — recalculated ${r.recalculated.map(x => shortName((S.projects.find(p => p.id === x) || {}).name || x)).join(", ")}; ${(r.impact || []).filter(x => x.old_value !== x.new_value || x.old_status !== x.new_status).length} BOQ line(s) changed; ${Object.keys(r.benchmarks || {}).length} benchmark(s) refreshed` : ""}${r.session_id ? " · recorded in session " + r.session_id : ""}`, 9000); refreshChrome(); route(); } catch (e) { toast(e.message, 6000, "error"); route(); } };
+    $$("[data-inherit]").forEach(b => b.onclick = async () => { const rid = b.dataset.inherit;
+      if (await confirmDialog("Use the shared rule?", `This project will inherit the shared rule again. Only ${esc(cur().name)} will be recalculated.`, "Use shared rule")) act(rid, { action: "inherit" }, "Project override cleared", b); });
     $$("[data-approve]").forEach(b => b.onclick = async () => { const rid = b.dataset.approve; const o = $(`input[name="opt-${rid}"]:checked`)?.value; if (!o) return toast("Select an option first");
       const r = rs.find(x => x.rule_id === rid);
-      if (await confirmDialog(`Approve “${r.title}”?`, `Option <b>${esc(o)}</b> becomes the CONFIRMED Static Group method (version ${r.version + 1}). Every project and benchmark is recalculated and the decision is recorded in the audit log with your name.`, "Approve rule")) act(rid, { action: "approve", option: o, note: note(rid) }, "Rule approved", b); });
+      if (await confirmDialog(`Approve “${r.title}”?`, `Option <b>${esc(o)}</b> becomes the CONFIRMED approved project method (version ${r.version + 1}). Only ${esc(cur().name)} is recalculated and the decision is recorded in the audit log with your name.`, "Approve rule")) act(rid, { action: "approve", option: o, note: note(rid) }, "Rule approved", b); });
     $$("[data-keep]").forEach(b => b.onclick = () => { const rid = b.dataset.keep; const r = rs.find(x => x.rule_id === rid); act(rid, { action: "note", note: note(rid) || `Reviewed — kept unconfirmed (${r.status})`, recalculate: false }, `Note recorded — rule stays ${r.status}, no quantity changed`, b); });
     $$("[data-act]").forEach(b => b.onclick = async () => { const rid = b.dataset.rid;
       if (b.dataset.act === "note") { if (!note(rid).trim()) return toast("Write the note first"); return act(rid, { action: "note", note: note(rid), recalculate: false }, "Note added", b); }
@@ -1071,7 +1088,7 @@ async function liveTab(main, arg, params) {
   <div class="toolbar">${seg("lvf", [["", "All", props.length], ["await", "Awaiting estimator", props.filter(p => !p.decision).length], ["decided", "Decided", props.filter(p => p.decision && !p.decision_stale).length], ["stale", "Stale", props.filter(p => p.decision_stale).length], ["unknown", "UNKNOWN rule", props.filter(p => p.unknown_rules.length).length]], filt)}</div>
   <div id="lvt"></div>
   <div class="section-title">Baselines &amp; revision comparison <span class="count">${d.baselines.length}</span></div>
-  <div class="grid g2"><div class="card"><h3>Create a baseline (read-only once created)</h3><div class="mapping"><label for="bl-src">Source</label><select id="bl-src"><option value="historical_boq">Static Group historical BOQ (reference projects)</option><option value="client_boq">Imported client / existing BOQ</option><option value="estimator_decisions">Estimator-approved quantities (ACCEPT / CORRECT)</option></select>
+  <div class="grid g2"><div class="card"><h3>Create a baseline (read-only once created)</h3><div class="mapping"><label for="bl-src">Source</label><select id="bl-src"><option value="historical_boq">Historical reference BOQ (reference projects)</option><option value="client_boq">Imported client / existing BOQ</option><option value="estimator_decisions">Estimator-approved quantities (ACCEPT / CORRECT)</option></select>
      <label for="bl-rev">Drawing revision of the baseline</label><input id="bl-rev" placeholder="e.g. Tender issue, Rev 0 — as on the title blocks"><label for="bl-label">Label</label><input id="bl-label" placeholder="optional"></div><div class="toolbar" style="margin-top:10px"><button id="bl-go">${icon("plus")}Create baseline</button></div></div>
    <div class="card"><h3>Baselines</h3>${d.baselines.length ? d.baselines.map(b => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--border)"><div style="flex:1"><b>${esc(b.label)}</b><div class="small">${esc(b.source)} · revision ${esc(b.revision || "not recorded")} · ${b.lines} lines · ${fmtIso(b.created)} by ${esc(b.created_by)}</div></div><button class="sec small" data-cmp="${esc(b.baseline_id)}">Compare with latest run</button></div>`).join("") : '<div class="small">No baseline yet. A baseline is never overwritten; create a new one for each reference set.</div>'}</div></div>
   <div id="cmp"></div>
@@ -1148,7 +1165,7 @@ async function pilotTab(main) {
   const num = (sect, k, label) => `<label for="pl-${sect}-${k}">${label}</label><input id="pl-${sect}-${k}" data-sec="${sect}" data-k="${k}" type="number" min="0" step="0.25" value="${rec[sect][k] ?? ""}">`;
   const qty = rec.quantities.slice();
   const opts = items.filter(i => i.unit !== "item").map(i => [i.item_id + "|" + i.variant, `${i.item_id}${i.variant ? " " + i.variant : ""} — ${i.description.slice(0, 50)}`]);
-  main.innerHTML = `<div class="banner info">${icon("info")}<div>Live-pilot record for a real project: manual take-off vs this system. Manual figures are entered by Static Group; automated figures are read from the application. A difference appears only when both values exist. <b>No accuracy percentage or time-saving figure is produced</b> until real manual data has been entered and reviewed.</div></div>
+  main.innerHTML = `<div class="banner info">${icon("info")}<div>Live-pilot record for a real project: manual take-off vs this system. Manual figures are entered by the estimating team; automated figures are read from the application. A difference appears only when both values exist. <b>No accuracy percentage or time-saving figure is produced</b> until real manual data has been entered and reviewed.</div></div>
   <div class="grid g2"><div class="card"><h3>Manual process (entered)</h3><div class="mapping">${num("manual", "takeoff_hours", "Manual take-off (h)")}${num("manual", "boq_hours", "Manual BOQ preparation (h)")}${num("manual", "review_hours", "Manual review (h)")}${num("manual", "missing_items_found", "Missing items found manually")}${num("manual", "corrections", "Manual corrections")}</div></div>
    <div class="card"><h3>Automated process</h3><div class="kv tight small"><div>Drawing processing</div><div>${sec(a.processing_seconds)} <span class="mono">${esc(a.processing_run || "")}</span></div><div>Quantity calculation</div><div>${sec(a.calculation_seconds)} <span class="mono">${esc(a.calculation_run || "")}</span></div><div>BOQ generation</div><div>${a.boq_generation_seconds == null ? "—" : a.boq_generation_seconds + " s"}</div>
      <div>BOQ lines</div><div>${a.boq_lines} — ${Object.entries(a.boq_status).map(([k, v]) => `${esc(k)} ${v}`).join(" · ")}</div><div>Missing-information lines</div><div>${a.missing_lines}</div><div>Audited corrections</div><div>${a.corrections}</div><div>Review decisions</div><div>${a.review_decisions}</div><div>Methodology rules</div><div>${a.rules_confirmed} confirmed · ${a.rules_unconfirmed} unconfirmed</div></div>
@@ -1216,27 +1233,59 @@ async function newproject(main) {
   const proj = cur();
   const isNew = proj && proj.role === "new project";
   const files = isNew ? await api(P("/files")).catch(() => ({})) : {};
+  const sourceDrawings = isNew ? await api(P("/source-drawings")).catch(() => []) : [];
   const KINDS = [["drawings", "Drawings", ".dxf measured · .dwg measured (needs the free ODA File Converter installed on the server once) · .pdf stored · .zip extracted"], ["schedules", "Schedules", ".dxf / .pdf / .xlsx"], ["specifications", "Specifications", ".pdf / .docx"], ["client_boq", "Client BOQ (optional)", ".xlsx / .csv — compared on the Client BOQ tab"]];
+  KINDS.push(["references", "Other references", "Files not identified as drawings, BOQs, schedules or specifications are kept as project references."]);
+  const currentCounts = Object.fromEntries(["drawings", "schedules", "client_boq", "specifications", "references"].map(k => [k, (files[k] || []).length]));
   const steps = ["Create project", "Upload drawings", "Process", "Review", "Generate BOQ", "Export"];
   main.innerHTML = pageHead("New project", "The new project's quantities are calculated from its own drawings and information. Reference projects are used only as methodology evidence — no quantity is copied.", `<a class="btn sec" href="#/projects">${icon("back")}Projects</a>`) +
   `<div class="card" style="margin-bottom:16px"><div class="row wrap" style="gap:6px">${steps.map((s, i) => `<span class="badge ${i === 0 && !isNew ? "b-dark" : i === 1 && isNew ? "b-dark" : "b-outline"} plain">${i + 1}. ${s}</span>${i < steps.length - 1 ? '<span class="small">→</span>' : ""}`).join("")}</div></div>
-  <div class="card"><h3>1. Create project</h3><div class="mapping"><label for="np_name">Project name</label><input id="np_name" placeholder="e.g. Mr. X Villa (G+F+PH)"><label for="np_client">Client</label><input id="np_client"><label for="np_loc">Location</label><input id="np_loc">
+  ${!isNew ? `<div class="card"><h3>1. Create project</h3><div class="mapping"><label for="np_name">Project name</label><input id="np_name" placeholder="e.g. Mr. X Villa (G+F+PH)"><label for="np_client">Client</label><input id="np_client"><label for="np_loc">Location</label><input id="np_loc">
   <label for="np_rules">CAD standard (rules)</label><select id="np_rules"><option value="rules_villa_std.json">Consultant standard (villa, no basement)</option><option value="rules_ramzi_villa.json">Consultant standard (with basement)</option></select></div>
-  <div class="toolbar" style="margin-top:12px"><button id="np_create">${icon("plus")}Create project</button>${isNew ? `<span class="small">Current: <b>${esc(proj.name)}</b></span>` : ""}</div></div>
-  ${isNew ? `<div class="grid g2" style="margin-top:16px">${KINDS.map(([k, t, hint], i) => `<div class="card"><h3>${i + 2}. ${t}</h3><div class="small">${hint}</div>
+  <div class="toolbar" style="margin-top:12px"><button id="np_create">${icon("plus")}Create project</button>${isNew ? `<span class="small">Current: <b>${esc(proj.name)}</b></span>` : ""}</div></div>` : `<div class="card"><h3>1. Project ready</h3><div class="small">Current project: <b>${esc(proj.name)}</b></div><p class="small">This project is ready to receive its drawing folder.</p></div>`}
+  ${isNew ? `<div class="card" style="margin-bottom:16px;border:2px solid var(--accent)"><h3>2. Upload project folder</h3><p class="small">Choose the complete project folder once. The app sorts DXF/DWG drawings, the client BOQ, schedules, specifications and other references into their project folders, then starts drawing processing automatically.</p><div class="toolbar wrap"><label class="btn sec" style="margin:0">Choose project folder<input id="projectFolderInput" type="file" multiple webkitdirectory directory style="display:none"></label><button id="folderIntake" disabled>Upload folder &amp; start processing</button><span class="small" id="folderSelection">No folder selected</span></div><div class="small" style="margin-top:8px">Already stored: ${currentCounts.drawings} drawings/files, ${currentCounts.client_boq} BOQ files, ${currentCounts.schedules} schedules, ${currentCounts.specifications} specifications, ${currentCounts.references} references.</div></div>` : ""}
+  ${isNew && sourceDrawings.length ? `<div class="card" style="margin-bottom:16px"><h3>Preview CAD drawings</h3><p class="small">Open a DXF or DWG in the drawing viewer before processing. DWG preview requires ODA File Converter.</p><div class="row wrap">${sourceDrawings.map(d => `<a class="btn sec small" href="#/viewer/${encodeURIComponent(d.drawing_id)}?source=1" title="Preview ${esc(d.rel_path)}">${icon("eye")}${esc(d.rel_path)} <span class="badge b-outline plain">${esc(d.format)}</span></a>`).join("")}</div></div>` : ""}
+  ${isNew ? `<details style="margin-top:16px"><summary>Or upload individual files by category</summary><div class="grid g2" style="margin-top:12px">${KINDS.map(([k, t, hint], i) => `<div class="card"><h3>${i + 2}. ${t}</h3><div class="small">${hint}</div>
     <div class="toolbar" style="margin-top:10px;flex-wrap:wrap"><input type="file" multiple data-up="${k}" aria-label="${t} — choose files"><label class="btn sec small" style="margin:0">${icon("projects")}Choose folder<input type="file" multiple webkitdirectory data-upd="${k}" aria-label="${t} — choose folder" style="display:none"></label><button class="small" data-upb="${k}">Upload</button></div>
     <div class="small" data-upsel="${k}"></div>
-    <div class="small">${(files[k] || []).length} file(s)${(files[k] || []).length ? ": " + (files[k] || []).slice(0, 8).map(f => esc(f.file)).join(", ") : ""}${(files[k] || []).length > 8 ? "…" : ""}</div></div>`).join("")}</div>
+    <div class="small">${(files[k] || []).length} file(s)${(files[k] || []).length ? ": " + (files[k] || []).slice(0, 8).map(f => esc(f.file)).join(", ") : ""}${(files[k] || []).length > 8 ? "…" : ""}</div></div>`).join("")}</div></details>
   <div class="card" style="margin-top:16px"><h3>Next steps</h3><div class="row wrap"><a class="btn" href="#/processing">${icon("play")}Process drawings</a><a class="btn sec" href="#/project/drawings">Review disciplines</a><a class="btn sec" href="#/project/elements">Review elements</a><a class="btn sec" href="#/project/boq">Generate BOQ</a><a class="btn sec" href="#/project/reviews">Review exceptions</a><a class="btn sec" href="${P("/export/static-boq")}">${icon("export")}Export</a></div></div>` : `<div class="banner info" style="margin-top:16px">${icon("info")}<div>Create a project (or select one created here) to upload its documents.</div></div>`}`;
-  $("#np_create").onclick = async () => {
+  if ($("#np_create")) $("#np_create").onclick = async () => {
     const name = $("#np_name").value.trim(); if (!name) return toast("Enter a project name");
     try { const p = await api("/api/projects", { method: "POST", body: { name, client: $("#np_client").value, location: $("#np_loc").value, rules_file: $("#np_rules").value, mode: "upload" } });
       S.pid = p.id; localStorage.setItem("pid", p.id); await init(); location.hash = "#/newproject"; toast("Project created"); } catch (e) { toast(e.message, 5000, "error"); }
   };
-  const selLabel = k => { const fInp = $(`[data-up="${k}"]`), dInp = $(`[data-upd="${k}"]`); const n = fInp.files.length + dInp.files.length;
-    $(`[data-upsel="${k}"]`).textContent = n ? `${n} file(s) selected${dInp.files.length ? ` (folder: ${esc(dInp.files[0]?.webkitRelativePath?.split("/")[0] || "")})` : ""}` : ""; };
-  $$("[data-up]").forEach(inp => inp.onchange = () => selLabel(inp.dataset.up));
-  $$("[data-upd]").forEach(inp => inp.onchange = () => selLabel(inp.dataset.upd));
+  const folderInput = $("#projectFolderInput");
+  if (folderInput) {
+    folderInput.onchange = () => {
+      const selected = [...folderInput.files];
+      const root = selected[0]?.webkitRelativePath?.split("/")[0] || selected[0]?.name || "";
+      const cad = selected.filter(f => /\.(dxf|dwg)$/i.test(f.name)).length;
+      $("#folderSelection").textContent = selected.length ? `${selected.length} files selected from ${root}; ${cad} DXF/DWG drawings, ${selected.length - cad} supporting files` : "No folder selected";
+      $("#folderIntake").disabled = !selected.length;
+    };
+    $("#folderIntake").onclick = async () => {
+      const selected = [...folderInput.files];
+      if (!selected.length) return toast("Choose a project folder first");
+      const fd = new FormData();
+      selected.forEach(f => fd.append("files", f, f.webkitRelativePath || f.name));
+      const button = $("#folderIntake"); button.disabled = true; button.textContent = "Uploading and sorting...";
+      try {
+        const result = await api(P("/intake-folder-and-process"), { method: "POST", body: fd });
+        const savedCount = Object.values(result.counts).reduce((a, n) => a + n, 0);
+        const categories = Object.entries(result.counts).filter(([, n]) => n).map(([k, n]) => `${k.replace("_", " ")}: ${n}`).join(", ") || "no files saved";
+        folderInput.value = ""; invalidate();
+        if (result.processing_started) {
+          toast(`Sorted ${savedCount} of ${result.received} files (${categories}); ${result.drawings_ready} DXF/DWG drawings ready. Processing started.`, 10000);
+          location.hash = "#/processing";
+          await route();
+        } else {
+          toast(`${categories}. ${result.message}`, 10000, "error");
+          await route();
+        }
+      } catch (e) { toast(e.message, 7000, "error"); button.disabled = false; button.textContent = "Upload folder & start processing"; }
+    };
+  }
   $$("[data-upb]").forEach(b => b.onclick = async () => {
     const k = b.dataset.upb;
     const fInp = $(`[data-up="${k}"]`), dInp = $(`[data-upd="${k}"]`);
@@ -1256,7 +1305,7 @@ const SUGGEST = ["Which projects need attention?", "What information is missing?
 async function assistant(main) {
   setCrumb("Intelligence", "Assistant");
   const d = await api("/api/ceo").catch(() => ({ ai_mode: "" }));
-  main.innerHTML = `<div style="max-width:920px;margin:0 auto">` + pageHead("Static Group Project Assistant", "Ask about projects, BOQs, quantities, issues and missing information. Answers are assembled from the application's own records and always show their sources — the assistant never measures drawings and never answers from memory.", `<span class="badge b-outline plain">${icon("info")}Mode: ${esc(d.ai_mode || "data only")}</span>`) +
+  main.innerHTML = `<div style="max-width:920px;margin:0 auto">` + pageHead("Project Assistant", "Ask about projects, BOQs, quantities, issues and missing information. Answers are assembled from the application's own records and always show their sources — the assistant never measures drawings and never answers from memory.", `<span class="badge b-outline plain">${icon("info")}Mode: ${esc(d.ai_mode || "data only")}</span>`) +
     `<div class="row wrap small" style="margin:-8px 0 16px">Context project: <b style="color:var(--text-primary)">${esc(shortName(cur().name))}</b> <span>· change it in the top bar</span></div>
     <div class="chat" id="chat"></div>
     <div id="sugg" style="margin:18px 0"><div class="small" style="margin-bottom:8px">Try asking</div><div class="suggest">${SUGGEST.map(q => `<button type="button" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div></div>
@@ -1294,7 +1343,7 @@ async function report(main) {
   const attn = live.reduce((a, p) => a + p.items_needing_review + p.items_missing_input, 0);
   const qch = live.reduce((a, p) => a + (p.drawing_changes?.boq_items_changed || 0), 0);
   const large = live.flatMap(p => p.large_variances.map(v => ({ ...v, project: p.name })));
-  main.innerHTML = `<div style="max-width:1180px"><div class="report-head"><div><div class="eyebrow">Daily Project Intelligence</div><h1 class="page-title">${new Date(r.date).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</h1>
+  main.innerHTML = `<div style="max-width:1180px"><div class="report-head"><div><div class="eyebrow">Portfolio-wide daily report - all active projects</div><h1 class="page-title">${new Date(r.date).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</h1>
     <div class="page-sub">Generated ${fmtIso(r.generated)} · compared with ${r.compared_with ? "snapshot of " + esc(r.compared_with) : "no earlier snapshot (new / resolved issues appear from the next report)"}</div></div>
     <div class="row no-print"><button class="sec" id="snap">${icon("check")}Save snapshot</button><button class="sec" onclick="window.print()">${icon("print")}Print</button><img src="/static/brand/static-logo.png" alt="STATIC" style="height:30px;margin-left:12px"></div></div>
   <div class="grid g4">${kpi("Critical", crit, "review items needing an engineer decision", { cls: crit ? "accent-error" : "" })}${kpi("Needs attention", attn, "BOQ lines needing review or missing data", { cls: "accent-warning" })}${kpi("Pending decisions", r.pending_approvals.length, "methodology rules to approve", { href: "#/rules" })}${kpi("Quantity changes", qch, "BOQ lines changed vs previous runs")}</div>

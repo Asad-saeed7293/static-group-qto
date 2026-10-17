@@ -16,12 +16,20 @@ import datetime as dt
 import getpass
 import json
 import os
+import re
 import threading
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG = os.path.join(ROOT, "config")
 DATA = os.path.join(ROOT, "data")
 _lock = threading.Lock()
+_PROJECT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$")
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$")
+
+
+def _validate_project_id(pid):
+    if not isinstance(pid, str) or not _PROJECT_ID_RE.fullmatch(pid):
+        raise ValueError("Invalid project id")
 
 
 def now():
@@ -81,6 +89,9 @@ def project(pid):
 
 
 def add_project(rec):
+    _validate_project_id(rec.get("id"))
+    if not rec.get("name", "").strip():
+        raise ValueError("Project name is required")
     cfg = read_json(os.path.join(CONFIG, "projects.json"), {"projects": []})
     if any(p["id"] == rec["id"] for p in cfg["projects"]):
         raise ValueError("Project id already exists")
@@ -88,8 +99,39 @@ def add_project(rec):
     write_json(os.path.join(CONFIG, "projects.json"), cfg)
 
 
+def update_project(pid, fields):
+    """Update supported project metadata without changing its persistent identity or data path."""
+    _validate_project_id(pid)
+    allowed = {"name", "client", "location", "project_type", "metadata", "rules_file"}
+    if not isinstance(fields, dict) or set(fields) - allowed:
+        raise ValueError("Only name, client, location, project_type, metadata, and rules_file may be updated")
+    cfg = read_json(os.path.join(CONFIG, "projects.json"), {"projects": []})
+    rec = next((p for p in cfg["projects"] if p.get("id") == pid), None)
+    if not rec:
+        raise KeyError(pid)
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if "name" in updates and (not isinstance(updates["name"], str) or not updates["name"].strip()):
+        raise ValueError("Project name is required")
+    if "rules_file" in updates:
+        _validate_rules_file(updates["rules_file"])
+    rec.update(updates)
+    write_json(os.path.join(CONFIG, "projects.json"), cfg)
+    audit(pid, "project_updated", changes=updates)
+    return rec
+
+
+def _validate_rules_file(name):
+    if not isinstance(name, str) or not name or os.path.basename(name) != name or not name.startswith("rules_") or not name.endswith(".json"):
+        raise ValueError("rules_file must name a rules_*.json file inside config")
+    path = os.path.abspath(os.path.join(CONFIG, name))
+    if os.path.commonpath((os.path.abspath(CONFIG), path)) != os.path.abspath(CONFIG) or not os.path.isfile(path):
+        raise ValueError("rules_file must name an existing rules_*.json file inside config")
+    return name
+
+
 def load_rules_file(name):
     """Load a rules file; a file may 'extends' another and override top-level keys."""
+    _validate_rules_file(name)
     r = read_json(os.path.join(CONFIG, name))
     if r and r.get("extends"):
         base = load_rules_file(r["extends"])
@@ -109,7 +151,10 @@ def load_rules_file(name):
 
 
 def rules(pid):
-    return load_rules_file(project(pid).get("rules_file", "rules_ramzi_villa.json"))
+    rule_file = project(pid).get("rules_file")
+    if not rule_file:
+        raise ValueError(f"Project {pid} has no CAD standard configured")
+    return load_rules_file(rule_file)
 
 
 def base_settings():
@@ -117,6 +162,7 @@ def base_settings():
 
 
 def pdir(pid, *parts):
+    _validate_project_id(pid)
     return os.path.join(DATA, "projects", pid, *parts)
 
 
@@ -183,13 +229,51 @@ def latest_run_id(pid):
 
 
 def set_latest(pid, run_id):
+    _validate_project_id(pid)
+    _validate_run_id(run_id)
+    meta = run_metadata(pid, run_id)
+    if meta.get("status") not in ("completed", "completed with errors"):
+        raise ValueError("Only a completed run can become the latest run")
     os.makedirs(pdir(pid), exist_ok=True)
     with open(pdir(pid, "latest_run.txt"), "w") as fh:
         fh.write(run_id)
 
 
+def _validate_run_id(run_id):
+    if not isinstance(run_id, str) or not _RUN_ID_RE.fullmatch(run_id):
+        raise ValueError("Invalid run id")
+
+
 def run_path(pid, run_id, name):
+    _validate_project_id(pid)
+    _validate_run_id(run_id)
+    if not isinstance(name, str) or os.path.basename(name) != name or name in (".", ".."):
+        raise ValueError("Invalid run record name")
     return pdir(pid, "runs", run_id, name)
+
+
+def run_metadata(pid, run_id):
+    """Return run metadata only when it is stored under, and owned by, this project."""
+    meta = read_json(run_path(pid, run_id, "run.json"))
+    if not meta:
+        # Older saved projects may have results without run.json. The project-local
+        # latest pointer and run directory still establish the owner; never fall
+        # back to another project's path.
+        if read_json(run_path(pid, run_id, "results.json")) is None:
+            raise KeyError(f"Run {run_id} not found for project {pid}")
+        return {"run_id": run_id, "project": pid, "status": "completed", "previous_run": None,
+                "counts": {}, "legacy_metadata": True}
+    owner = meta.get("project")
+    if owner not in (None, pid):
+        raise KeyError(f"Run {run_id} does not belong to project {pid}")
+    if meta.get("run_id") not in (None, run_id):
+        raise KeyError(f"Run metadata id does not match project-local run {run_id}")
+    return meta
+
+
+def read_project_run(pid, run_id, record):
+    run_metadata(pid, run_id)
+    return read_json(run_path(pid, run_id, record))
 
 
 def list_runs(pid):
@@ -199,7 +283,7 @@ def list_runs(pid):
     out = []
     for r in sorted(os.listdir(d), reverse=True):
         meta = read_json(os.path.join(d, r, "run.json"))
-        if meta:
+        if meta and meta.get("project") in (None, pid):
             out.append({k: meta.get(k) for k in ("run_id", "started", "finished", "status", "counts", "kind")})
     return out
 

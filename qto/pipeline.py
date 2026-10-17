@@ -91,6 +91,16 @@ def run_full(pid: str, progress: Progress, scope: str = "all") -> str:
             dxf = [p for p in dxf if "structural" in p.lower()]
         P.stage(1, "done", f"{len(dxf)} DXF files, {len(other)} other files")
 
+        if not dxf:
+            message = "No DXF or DWG drawings were found; other documents are stored as references and are not measured."
+            st["error"] = message
+            P.stage(1, "error", message)
+            store.write_json(store.run_path(pid, run_id, "drawings.json"), [])
+            store.write_json(store.run_path(pid, run_id, "run.json"), _incomplete_run_meta(
+                pid, run_id, "no drawings", started, proj, root, other, [], warnings, message))
+            store.audit(pid, "processing_incomplete", run_id=run_id, status="no drawings", message=message)
+            return run_id
+
         P.stage(2, "running")
         st["file_total"] = len(dxf)
         drawings = []
@@ -112,8 +122,28 @@ def run_full(pid: str, progress: Progress, scope: str = "all") -> str:
             P.log(f"Scanned {d['file']} ({d['status']}, {d.get('seconds', '?')} s)")
         P.stage(2, "done", f"{sum(1 for d in drawings if d['status'] != 'error')}/{len(dxf)} opened")
 
-        P.stage(3, "running")
+        if drawings and all(d.get("status") == "error" for d in drawings):
+            message = "Every DXF/DWG drawing failed to open; no results were generated and the previous successful run remains active."
+            st["error"] = message
+            P.stage(2, "error", message)
+            store.write_json(store.run_path(pid, run_id, "drawings.json"), drawings)
+            store.write_json(store.run_path(pid, run_id, "run.json"), _incomplete_run_meta(
+                pid, run_id, "failed", started, proj, root, other, drawings, warnings, message, errors))
+            store.audit(pid, "processing_failed", run_id=run_id, status="failed", message=message, errors=errors)
+            return run_id
+
         role_d = [d for d in drawings if d.get("role")]
+        if not role_d:
+            message = "No drawing matched a supported quantity rule; files were inventoried only and no results were generated."
+            st["error"] = message
+            P.stage(3, "error", message)
+            store.write_json(store.run_path(pid, run_id, "drawings.json"), drawings)
+            store.write_json(store.run_path(pid, run_id, "run.json"), _incomplete_run_meta(
+                pid, run_id, "unsupported drawings", started, proj, root, other, drawings, warnings, message, errors))
+            store.audit(pid, "processing_incomplete", run_id=run_id, status="unsupported drawings", message=message)
+            return run_id
+
+        P.stage(3, "running")
         hits = Counter()
         for d in role_d:
             hits.update(d["facts"]["rule_hits"])
@@ -144,6 +174,21 @@ def run_full(pid: str, progress: Progress, scope: str = "all") -> str:
     return run_id
 
 
+def _incomplete_run_meta(pid, run_id, status, started, project, root, other, drawings, warnings, message, errors=None):
+    return {"run_id": run_id, "kind": "full", "project": pid, "project_name": project["name"],
+            "source_folder": root, "started": started, "finished": store.now(), "status": status,
+            "previous_run": store.latest_run_id(pid),
+            "files": [{"file": d.get("file"), "rel_path": d.get("rel_path"), "status": d.get("status"),
+                       "drawing_id": d.get("drawing_id")} for d in drawings],
+            "other_files": [os.path.relpath(path, root) for path in other],
+            "counts": {"drawings": len(drawings), "processed": 0, "inventoried": 0,
+                       "failed": sum(d.get("status") == "error" for d in drawings), "elements": 0,
+                       "by_type": {}, "elements_skipped": 0, "quantity_records": 0, "quantified": 0,
+                       "not_quantified": 0, "boq_lines": 0, "validation_issues": 0,
+                       "total_concrete_m3": 0, "total_blinding_m3": 0},
+            "warnings": warnings, "errors": errors or [], "incomplete_reason": message}
+
+
 def _compute(pid, run_id, drawings, facts, rules, settings, ov, P=None):
     def stage(i, s, d=""):
         if P:
@@ -156,7 +201,7 @@ def _compute(pid, run_id, drawings, facts, rules, settings, ov, P=None):
             x.update(facts[d["drawing_id"]])
             dd.append(x)
     logs = []
-    mrules = load_method_rules()
+    mrules = load_method_rules(pid)
     settings = settings_for(mrules, settings)   # approved methodology rules override development defaults
     res = build_all(dd, rules, settings, ov, logs.append)
     stage(4, "done", "; ".join(logs[:3]))
@@ -199,7 +244,8 @@ def _compute(pid, run_id, drawings, facts, rules, settings, ov, P=None):
     stage(7, "done", f"{sum(flags.values())} element flags; {len(validation_issues)} calculation validation issues")
     out = {"run_id": run_id, "elements": elements, "quantities": quantities, "boq": boq, "design": res["design"],
            "items": items, "validation_issues": validation_issues,
-           "rule_snapshot": {k: {"status": v["status"], "selected": v.get("selected"), "version": v.get("version")} for k, v in mrules.items()},
+           "rule_snapshot": {k: {"status": v["status"], "selected": v.get("selected"), "version": v.get("version"),
+                                  "source": v.get("source", "Shared default")} for k, v in mrules.items()},
            "warnings": res["warnings"], "orphans": res["orphans"], "build_log": logs,
            "assumptions": assumptions_list(res["design"], settings, rules), "settings_used": settings, "overrides_used": ov}
     store.write_json(store.run_path(pid, run_id, "results.json"), out)

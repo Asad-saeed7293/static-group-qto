@@ -127,6 +127,10 @@ def slab_zones(fr: dict, floor: str, settings: dict, overrides: dict | None = No
                                        "bbox": bb}, "Zone reconstructed from slab boundary linework"))
         if main.interiors:
             e.attributes["holes_in_linework"] = len(main.interiors)
+            e.attributes["interior_rings"] = [
+                [[round(x, 4), round(y, 4)] for x, y in list(ring.coords)[:-1]]
+                for ring in main.interiors
+            ]
         gross = z.area
         deducted = []
         for o in openings:

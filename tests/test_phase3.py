@@ -274,19 +274,21 @@ def test_preview_matches_export_structure(tmp_path):
     export_static_boq(KAWARI, str(out))
     import openpyxl
     wb = openpyxl.load_workbook(str(out))
-    assert set(wb.sheetnames) >= {*pv["sheet_order"], "Summary", "Calculation Detail"}
+    assert wb.sheetnames == ["CP ", "Summary", *pv["sheet_order"]]
 
     sm = wb["Summary"]
-    exported_codes = [sm.cell(row=r, column=3).value for r in range(6, sm.max_row + 1) if sm.cell(row=r, column=3).value]
-    exported_codes = [c for c in exported_codes if c != "GRAND TOTAL (QR)"]
+    exported_codes = [sm.cell(row=r, column=2).value for r in (7, 9, 11)]
     assert exported_codes == [s["code"] for s in pv["summary"]], "preview's Summary order must match the exported file's"
+    assert all(sm.cell(row=r, column=7).data_type == "f" for r in (7, 9, 11))
 
     for sheet_name in pv["sheet_order"]:
         preview_codes = [r["code"] for r in pv["sheets"][sheet_name] if r["row"] in ("section", "subsection")]
         ws = wb[sheet_name]
-        written_codes = [ws.cell(row=r, column=3).value for r in range(6, ws.max_row + 1)
-                         if isinstance(ws.cell(row=r, column=3).value, str) and any(c.isalpha() for c in ws.cell(row=r, column=3).value)
-                         and ws.cell(row=r, column=4).value and ws.cell(row=r, column=3).font.bold]
+        code_col = 3 if sheet_name == "BOQ FOR VILLA" else 2
+        written_codes = [ws.cell(row=r, column=code_col).value for r in range(6, ws.max_row + 1)
+                         if isinstance(ws.cell(row=r, column=code_col).value, str)
+                         and any(c.isalpha() for c in ws.cell(row=r, column=code_col).value)
+                         and ws.cell(row=r, column=code_col + 1).value and ws.cell(row=r, column=code_col).font.bold]
         assert preview_codes == written_codes, f"{sheet_name}: preview section/subsection codes must match what gets exported"
 
 

@@ -26,26 +26,44 @@ def _seed():
         return json.load(fh)
 
 
-def load_rules() -> dict:
-    """Seed rules overlaid with the stored state. Returns {rule_id: rule}."""
+def _state_path(project_id=None):
+    if project_id is None:
+        return STATE
+    store.project(project_id)
+    return store.pdir(project_id, "rule_state.json")
+
+
+def load_rules(project_id: str | None = None) -> dict:
+    """Load shared defaults, optionally overlaid with one project's decisions."""
     seed = _seed()
-    state = store.read_json(STATE, {}) or {}
+    shared_state = store.read_json(STATE, {}) or {}
+    state = store.read_json(_state_path(project_id), {}) or {} if project_id else {}
     out = {}
     for r in seed["rules"]:
         rr = copy.deepcopy(r)
-        st = state.get(r["rule_id"])
+        shared = shared_state.get(r["rule_id"])
+        st = state.get(r["rule_id"]) if project_id else None
+        if st and st.get("inherit"):
+            st = None
+        effective = st or shared
         rr["version"] = 1
         rr["history"] = []
         rr["notes"] = []
-        if st:
+        rr["source"] = "Project override" if st else ("Shared approved" if shared else "Shared default")
+        if effective:
             for k in ("status", "selected", "options", "description", "custom_value"):
-                if k in st:
-                    rr[k] = st[k]
-            rr["version"] = st.get("version", 1)
-            rr["history"] = st.get("history", [])
-            rr["notes"] = st.get("notes", [])
-            rr["approved_by"] = st.get("approved_by")
-            rr["approved_at"] = st.get("approved_at")
+                if k in effective:
+                    rr[k] = effective[k]
+            rr["version"] = effective.get("version", 1)
+            rr["history"] = effective.get("history", [])
+            rr["notes"] = effective.get("notes", [])
+            rr["approved_by"] = effective.get("approved_by")
+            rr["approved_at"] = effective.get("approved_at")
+        if project_id and state.get(r["rule_id"], {}).get("inherit"):
+            tombstone = state[r["rule_id"]]
+            rr["version"] = max(rr["version"], tombstone.get("version", 1))
+            rr["history"] = copy.deepcopy(tombstone.get("history", []))
+            rr["notes"] = copy.deepcopy(tombstone.get("notes", []))
         out[r["rule_id"]] = rr
     return out
 
@@ -69,14 +87,19 @@ def _snapshot(r):
 
 
 def update_rule(rule_id: str, action: str, user: str = None, option: str = None, note: str = "",
-                options: dict | None = None, description: str | None = None, custom_value=None, status: str | None = None) -> dict:
+                options: dict | None = None, description: str | None = None, custom_value=None, status: str | None = None,
+                project_id: str | None = None) -> dict:
     """action: approve (option -> CONFIRMED) | reject (back to UNKNOWN) | edit (options/description/status) | note."""
-    rules = load_rules()
+    rules = load_rules(project_id)
     if rule_id not in rules:
         raise KeyError(rule_id)
     r = rules[rule_id]
-    state = store.read_json(STATE, {}) or {}
-    st = state.get(rule_id) or {"version": 1, "history": [], "notes": []}
+    path = _state_path(project_id)
+    state = store.read_json(path, {}) or {}
+    st = state.get(rule_id) or {**_snapshot(r), "version": r.get("version", 1), "history": [], "notes": []}
+    if st.get("inherit"):
+        st = {**_snapshot(r), "version": st.get("version", 1), "history": st.get("history", []), "notes": st.get("notes", [])}
+    st.pop("inherit", None)
     user = user or store.user()
     before = _snapshot(r)
     if action == "approve":
@@ -116,11 +139,30 @@ def update_rule(rule_id: str, action: str, user: str = None, option: str = None,
         st.setdefault("history", []).append({"version": st["version"], "at": store.now(), "user": user, "action": action,
                                              "before": before, "after": {k: st.get(k, before.get(k)) for k in before}, "note": note})
     state[rule_id] = st
-    _save_state(state)
-    store.audit("platform", "rule_" + action, rule_id=rule_id, option=option, note=note, version=st.get("version"),
+    store.write_json(path, state)
+    store.audit(project_id or "platform", "rule_" + action, rule_id=rule_id, option=option, note=note, version=st.get("version"),
                 previous_status=before["status"], new_status=st.get("status", before["status"]),
                 previous_option=before["selected"], new_option=st.get("selected", before["selected"]))
-    return load_rules()[rule_id]
+    return load_rules(project_id)[rule_id]
+
+
+def reset_project_rule(project_id: str, rule_id: str) -> dict:
+    """Restore inheritance for one project while retaining its prior decision history."""
+    rules = load_rules(project_id)
+    if rule_id not in rules:
+        raise KeyError(rule_id)
+    path = _state_path(project_id)
+    state = store.read_json(path, {}) or {}
+    prior = state.get(rule_id) or {"version": 1, "history": [], "notes": []}
+    before = _snapshot(rules[rule_id])
+    prior["version"] = prior.get("version", 1) + 1
+    prior.setdefault("history", []).append({"version": prior["version"], "at": store.now(), "user": store.user(),
+        "action": "inherit", "before": before, "after": None, "note": "Reset to shared rule"})
+    prior["inherit"] = True
+    state[rule_id] = prior
+    store.write_json(path, state)
+    store.audit(project_id, "rule_inherit", rule_id=rule_id, previous_status=before["status"], version=prior["version"])
+    return load_rules(project_id)[rule_id]
 
 
 def settings_for(rules: dict, base_settings: dict) -> dict:

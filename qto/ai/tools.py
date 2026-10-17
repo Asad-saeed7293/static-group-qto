@@ -23,15 +23,21 @@ def _results(pid):
     rid = store.latest_run_id(pid)
     if not rid:
         return None, None
-    return rid, store.read_json(store.run_path(pid, rid, "results.json"))
+    try:
+        return rid, store.read_project_run(pid, rid, "results.json")
+    except KeyError:
+        return rid, None
 
 
 def list_projects():
     out, cites = [], []
     for p in store.projects():
         rid = store.latest_run_id(p["id"])
-        run = store.read_json(store.run_path(p["id"], rid, "run.json")) if rid else None
-        out.append({"id": p["id"], "name": p["name"], "role": p.get("role", ""), "processed": bool(rid),
+        try:
+            run = store.run_metadata(p["id"], rid) if rid else None
+        except KeyError:
+            run = None
+        out.append({"id": p["id"], "name": p["name"], "role": p.get("role", ""), "processed": bool(run and run.get("status") in ("completed", "completed with errors")),
                     "last_run": rid, "finished": run["finished"] if run else None})
         cites.append(_cite("project", p["id"], rid, "#/dashboard"))
     return {"data": out, "citations": cites}
@@ -44,7 +50,11 @@ def project_status(pid):
         return {"data": {"project": p["name"], "processed": False}, "citations": [_cite("project", pid)]}
     items = res.get("items") or []
     st = Counter(i["status"] for i in items)
-    run = store.read_json(store.run_path(pid, rid, "run.json"))
+    try:
+        run = store.run_metadata(pid, rid)
+    except KeyError:
+        return {"data": {"project": p["name"], "processed": False, "data_error": "The latest run is missing or belongs to another project."},
+                "citations": [_cite("project", pid, rid, "#/processing")]}
     q = service.queue(pid) if service.results(pid) else []
     open_q = [x for x in q if x["decision"]["state"] == "Open"]
     crit = [x for x in open_q if x["status_impact"] == "Review Required"]

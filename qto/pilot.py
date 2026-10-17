@@ -79,7 +79,7 @@ def automated_facts(pid):
     boq = generate_static_boq(items) if items else None
     gen = time.perf_counter() - t0 if boq else None
     audit = store.audit_log(pid, 1_000_000)
-    rules = load_rules().values()
+    rules = load_rules(pid).values()
     return {"processing_seconds": _dur(full) if full else None, "processing_run": full["run_id"] if full else None,
             "calculation_seconds": _dur(calc) if calc else None, "calculation_run": calc["run_id"] if calc else None,
             "boq_generation_seconds": round(gen, 3) if gen is not None else None,

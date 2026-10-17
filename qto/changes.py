@@ -11,7 +11,7 @@ from . import store
 
 def _drawings(pid, rid):
     out = {}
-    for d in store.read_json(store.run_path(pid, rid, "drawings.json")) or []:
+    for d in store.read_project_run(pid, rid, "drawings.json") or []:
         m = d.get("meta") or {}
         out[d.get("rel_path") or d["file"]] = {"file": d["file"], "size": m.get("file_size"), "entities": m.get("modelspace_entities"),
                                                 "extents": [round(v, 3) for v in (m.get("header_extents") or [])], "role": d.get("role")}
@@ -81,11 +81,16 @@ def compare_results(ro, rn, do=None, dn=None):
 def compare_runs(pid, old=None, new=None):
     new = new or store.latest_run_id(pid)
     if new and old is None:
-        meta = store.read_json(store.run_path(pid, new, "run.json")) or {}
+        meta = store.run_metadata(pid, new)
         old = meta.get("previous_run") or next((r["run_id"] for r in store.list_runs(pid) if r["run_id"] < new), None)
     if not (old and new):
         return {"project": pid, "old": old, "new": new, "available": False, "reason": "Two runs are needed for a comparison."}
-    ro = store.read_json(store.run_path(pid, old, "results.json")) or {}
-    rn = store.read_json(store.run_path(pid, new, "results.json")) or {}
+    if not store.read_json(store.run_path(pid, old, "results.json")) or not store.read_json(store.run_path(pid, new, "results.json")):
+        return {"project": pid, "old": old, "new": new, "available": False,
+                "reason": "A referenced project-local run is unavailable; no comparison was generated."}
+    ro = store.read_project_run(pid, old, "results.json")
+    rn = store.read_project_run(pid, new, "results.json")
+    if ro is None or rn is None:
+        raise KeyError(f"Run results are missing for project {pid}")
     out = compare_results(ro, rn, _drawings(pid, old), _drawings(pid, new))
     return {"project": pid, "old": old, "new": new, "available": True, **out}
