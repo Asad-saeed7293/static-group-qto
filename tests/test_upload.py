@@ -48,14 +48,11 @@ def test_rejects_windows_drive_letter_component():
     assert _safe_rel_path("Structural/C:/evil.dxf") is None
 
 
-def test_within_catches_the_drive_letter_escape_as_a_second_independent_layer():
-    """Defense in depth: even if a path component slipped past _safe_rel_path's own checks, joining it
-    onto a Windows drive letter resets os.path.join entirely - _within must still catch the result
-    landing outside the destination folder."""
-    dest = os.path.join("C:" + os.sep, "dest", "folder")
-    escaped = os.path.join(dest, "C:/Windows/evil.dxf")
+def test_within_catches_a_traversal_escape_as_a_second_independent_layer(tmp_path):
+    """Defense in depth: containment must reject a parent-directory traversal on every OS."""
+    dest = str(tmp_path / "dest")
+    escaped = os.path.join(dest, "..", "escape.dxf")
     assert not _within(dest, escaped)
-
 
 def test_within_accepts_a_path_genuinely_inside_the_destination(tmp_path):
     dest = str(tmp_path / "dest")

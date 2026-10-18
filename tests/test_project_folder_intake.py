@@ -135,13 +135,13 @@ def test_folder_intake_reports_conflicts_and_rejects_unsafe_paths_without_overwr
         fh.write(b"keep me")
 
     result = upload_project_folder("intake-a", [
-        _upload("Project/notes.txt", b"replace me"),
+        _upload("project/notes.txt", b"replace me"),
         _upload("../escape.dxf", b"unsafe"),
         _upload("C:/Windows/evil.dxf", b"unsafe"),
     ])
 
     assert result["counts"]["references"] == 0
-    assert result["conflicts"] == [{"file": "Project/notes.txt", "category": "references"}]
+    assert result["conflicts"] == [{"file": "project/notes.txt", "category": "references"}]
     assert result["rejected"] == [
         {"file": "../escape.dxf", "reason": "unsafe path"},
         {"file": "C:/Windows/evil.dxf", "reason": "unsafe path"},
