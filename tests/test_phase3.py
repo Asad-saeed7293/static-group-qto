@@ -429,11 +429,17 @@ def test_assistant_refuses_to_invent(monkeypatch):
     assert a["citations"] == [] and "could not match" in a["answer"]
 
 
-def test_assistant_matches_project_names():
+def test_assistant_matches_project_names(monkeypatch):
     from qto.ai.agent import _projects_in_text
-    ids = {p["id"] for p in store.projects()}
-    if {"sulaiti-villa", "kawari-villa"} <= ids:
-        assert _projects_in_text("Compare Sulaiti with Al-Kawari") == ["sulaiti-villa", "kawari-villa"]
+
+    monkeypatch.setattr(store, "projects", lambda: [
+        {"id": "southside-campus", "name": "Alsouthside Clinic"},
+        {"id": "northgate-annex", "name": "Northgate Annex"},
+    ])
+    assert _projects_in_text("Compare Southside with Northgate") == [
+        "southside-campus",
+        "northgate-annex",
+    ]
 
 
 def test_daily_report_is_data_only():
